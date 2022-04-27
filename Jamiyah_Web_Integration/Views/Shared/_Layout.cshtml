@@ -2,11 +2,207 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>@ViewBag.Title - My ASP.NET Application</title>
+    <title>JEC WEB Integration</title>
     <link href="~/favicon.ico" rel="shortcut icon" type="image/x-icon" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="300" />
     @Styles.Render("~/Content/css")
     @Scripts.Render("~/bundles/modernizr")
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+        var d = new Date();
+
+        var month = d.getMonth() + 1;
+        var day = d.getDate();
+
+        var currentDate = d.getFullYear() + '/' + (month < 10 ? '0' : '') + month + '/' + (day < 10 ? '0' : '') + day;
+
+        var TAIDII_Sync = {
+            StudentsData: function StudentsData() {
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/student/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        POST_TO_SAP.StudentsData();
+                    }
+                });
+            },
+            InvoiceData: function InvoiceData() {
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/invoice/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result-inv").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result-inv").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        POST_TO_SAP.InvoiceData();
+                    }
+                });
+            },
+            CreditNoteData: function CreditNoteData() {
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/creditnotes/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result").text(JSON.stringify(data));
+                    },
+                    complete: function () {
+
+                    }
+                });
+            },
+
+            ReceiptData: function ReceiptData() {
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/receipt/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result-pays").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result-pays").text(JSON.stringify(data));
+                    },
+                    complete: function () {
+                        POST_TO_SAP.ReceiptData();
+                    }
+                });
+            }
+        };
+
+        var POST_TO_TAIDII = {
+            ItemMasterData: function () {                
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/centeritem/create/',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: {
+                        api_key: "piRUbJ7d4AoXlH1TADBO",
+                        client: "jmdev",
+                        items: $("#result-itms").text()
+                    },
+                    success: function (_data) {
+                        $("#result-itms").text(JSON.stringify(_data));
+                    },
+                    error: function (request, error) {
+                        $("#result-itms").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        window.top.close();
+                    }
+                });
+            }
+        };
+
+
+        var GET_FROM_SAP = {
+            ItemMasterData: function () {
+                $.ajax({
+                    url: '/home/SyncSAPItems',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (_data) {
+                        $("#result-itms").text(JSON.stringify(_data));
+                    },
+                    error: function (request, error) {
+                        $("#result-itms").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        POST_TO_TAIDII.ItemMasterData();
+                    }
+                });
+            }
+        }
+
+        var POST_TO_SAP = {
+            StudentsData: function StudentsData() {
+                $.ajax({
+                    url: '/home/SyncStudent',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { jsonData: $("#result").text() },
+                    success: function (data) {
+                        $("#result").text(data);
+                    },
+                    error: function (request, error) {
+                        $("#result").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        TAIDII_Sync.InvoiceData();
+                    }
+                });
+            },
+            InvoiceData: function InvoiceData() {
+                $.ajax({
+                    url: '/home/SyncInvoices',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { jsonData: $("#result-inv").text() },
+                    success: function (data) {
+                        $("#result-inv").text(data);
+                    },
+                    error: function (request, error) {
+                        $("#result-inv").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        TAIDII_Sync.ReceiptData();
+                    }
+                });
+            },
+            CreditNoteData: function CreditNoteData() {
+                $.ajax({
+                    url: 'https://dev-new.taidii.com/api/open/sap/creditnotes/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+
+                    }
+                });
+            },
+
+            ReceiptData: function ReceiptData() {
+                $.ajax({
+                    url: '/home/SyncPayments',
+                    type: 'GET',
+                    dataType: 'json',
+                    data: { jsonData: $("#result-pays").text() },
+                    success: function (data) {
+                        $("#result-pays").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result-pays").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        GET_FROM_SAP.ItemMasterData();
+                    }
+                });
+            }
+        };
+        $(document).ready(function () {
+            TAIDII_Sync.StudentsData();
+        });
+    </script>
 </head>
 <body>
     <div class="navbar navbar-inverse navbar-fixed-top">
@@ -17,28 +213,27 @@
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                 </button>
-                @Html.ActionLink("Application name", "Index", "Home", new { area = "" }, new { @class = "navbar-brand" })
+                @Html.ActionLink("JAMIYAH Web Integration", "Index", "Home", new { area = "" }, new { @class = "navbar-brand" })
             </div>
             <div class="navbar-collapse collapse">
-                <ul class="nav navbar-nav">
-                    <li>@Html.ActionLink("Home", "Index", "Home", new { area = "" }, null)</li>
-                    <li>@Html.ActionLink("API", "Index", "Help", new { area = "HelpPage" }, null)</li>
-                </ul>
                 @Html.Partial("_LoginPartial")
             </div>
         </div>
     </div>
     <div class="container body-content">
-        @RenderBody()
+        @*@RenderBody()*@
+        <span>Student: </span><p id="result"></p>
+        <span>Invoice: </span><p id="result-inv"></p>
+        <span>Payment: </span><p id="result-pays"></p>
+        <span>Items: </span><p id="result-itms"></p>
+        <p id="result-pays"></p>
         @RenderSection("SPAViews", required: false)
         <hr />
-        <footer>
-            <p>&copy; @DateTime.Now.Year - My ASP.NET Application</p>
-        </footer>
     </div>
 
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")
     @RenderSection("Scripts", required: false)
+    
 </body>
 </html>
