@@ -1009,8 +1009,8 @@ namespace Jamiyah_Web_Integration.SAPServices
                             if (iRowReceipt.payment_type == 0 || iRowReceipt.payment_type == 1)
                             {
                                 oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-
-                                if (iRowReceipt.status == 0)
+                                oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
+                                if (iRowReceipt.status == 0 || (oDocEntry == "" && oDocEntry == "0"))
                                 {
                                     oTransId = (String)clsSBOGetRecord.GetSingleValue("select \"U_TransId\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"ObjType\" = 24", sapCompany);
                                     oIncomingPayment.DocObjectCode = BoPaymentsObjectType.bopot_IncomingPayments;
@@ -1295,13 +1295,42 @@ namespace Jamiyah_Web_Integration.SAPServices
                                             try
                                             {
                                                 oDocEntry = sapCompany.GetNewObjectKey();
-                                                lastMessage = "Successfully created Incoming Payment (Draft) with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                                                lastMessage = "Successfully created Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
                                                 sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 140 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
 
                                                 functionReturnValue = false;
                                             }
                                             catch
                                             { }
+
+                                            try
+                                            {
+                                                if (iRowReceipt.status == 1 && oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
+                                                {
+                                                    lErrCode = oIncomingPayment.Cancel();
+                                                    if (lErrCode == 0)
+                                                    {
+                                                        try
+                                                        {
+                                                            lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                                                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                                                            functionReturnValue = false;
+                                                        }
+                                                        catch
+                                                        { }
+                                                    }
+                                                    else
+                                                    {
+                                                        lastMessage = sapCompany.GetLastErrorDescription();
+                                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                                                        functionReturnValue = true;
+                                                    }
+                                                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
+                                                }
+                                            }
+                                            catch { }
                                         }
                                         else
                                         {
@@ -1322,7 +1351,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                     {
                                         oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OPDF\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"ObjType\" = 24", sapCompany);
 
-                                        lastMessage = "Incoming Payment (Draft) with Transaction Id:" + iRowReceipt.id + " is already existing in SAP B1.";
+                                        lastMessage = "Incoming Payment with Transaction Id:" + iRowReceipt.id + " is already existing in SAP B1.";
                                         sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 140 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
 
                                         functionReturnValue = true;
@@ -1334,7 +1363,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                     if (oDocEntry != "" && oDocEntry != "0") //**** Voiding of Incoming Payment when it is already existing SAP B1. ****\\
                                     {
                                         oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-                                        if (oIncomingPayment.GetByKey(Convert.ToInt16(oDocEntry)) == true)
+                                        if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
                                         {
                                             lErrCode = oIncomingPayment.Cancel();
                                             if (lErrCode == 0)
@@ -1361,7 +1390,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                     }
                                     else //**** Creation of Incoming Payment in SAP B1 before voiding the Incoming Payment. ****\\
                                     {
-                                        Int16 oDocEntryORCT = 0;
+                                        Int32 oDocEntryORCT = 0;
                                         string oDocEntryOPDF = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OPDF\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"ObjType\" = 24", sapCompany);
                                         if (oDocEntryOPDF == "" || oDocEntryOPDF == "0")
                                         {
@@ -1376,7 +1405,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                                     {
                                                         oDocEntry = sapCompany.GetNewObjectKey();
                                                         oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-                                                        if (oIncomingPayment.GetByKey(Convert.ToInt16(oDocEntry)) == true)
+                                                        if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
                                                         {
                                                             lErrCode = oIncomingPayment.Cancel();
                                                             if (lErrCode == 0)
@@ -2218,7 +2247,7 @@ namespace Jamiyah_Web_Integration.SAPServices
             }
         }
 
-        public Int16 CreateReceiptVoid(List<API_Receipt> listReceipt)
+        public Int32 CreateReceiptVoid(List<API_Receipt> listReceipt)
         {
             string functionReturnValue = "";
             int lErrCode = 0;

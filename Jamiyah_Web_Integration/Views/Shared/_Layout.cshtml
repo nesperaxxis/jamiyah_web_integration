@@ -15,7 +15,7 @@
         var month = d.getMonth() + 1;
         var day = d.getDate();
 
-        var currentDate = d.getFullYear() + '/' + (month < 10 ? '0' : '') + month + '/' + (day < 10 ? '0' : '') + day;
+        var currentDate = d.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + '01'; //(day < 10 ? '0' : '') + day + '';
 
         var TAIDII_Sync = {
             StudentsData: function StudentsData() {
@@ -184,7 +184,7 @@
             ReceiptData: function ReceiptData() {
                 $.ajax({
                     url: '/home/SyncPayments',
-                    type: 'GET',
+                    type: 'POST',
                     dataType: 'json',
                     data: { jsonData: $("#result-pays").text() },
                     success: function (data) {
