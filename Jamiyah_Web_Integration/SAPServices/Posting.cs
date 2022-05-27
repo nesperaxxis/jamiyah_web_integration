@@ -1052,9 +1052,16 @@ namespace Jamiyah_Web_Integration.SAPServices
 
 											goto isAddWithError;
 										}
+
+										var _invoiceIds = String.Join(",", iRowReceipt.invoice_id);
+										string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
+										string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
+									
 										oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
 										oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
-										oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
+										//oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
+										oInvoice.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+															? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
 										string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
 										oIncomingPayment.Series = int.Parse(seriesNum);
 										////**** UDF ****\\\\     
@@ -2054,9 +2061,14 @@ namespace Jamiyah_Web_Integration.SAPServices
 									goto isAddWithError;
 								}
 								string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like 'JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '14'", sapCompany);
+								
+								var _invoiceIds = String.Join(",", oRowInv.invoice_no);
+								string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
+								string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
+								
 								oInvoice.BPL_IDAssignedToInvoice = 5; //"Jamiyah Education Centre (JEC)";
-								oInvoice.DocDate = Convert.ToDateTime(oRowInv.date_created);
-								oInvoice.NumAtCard = oRowInv.invoice_no;
+                                oInvoice.DocDate = Convert.ToDateTime(oRowInv.date_created);
+                                oInvoice.NumAtCard = oRowInv.invoice_no;
 								oInvoice.DocDueDate = Convert.ToDateTime(oRowInv.date_due);
 
 								if (oRowInv.status == 1)
@@ -2342,9 +2354,15 @@ namespace Jamiyah_Web_Integration.SAPServices
 
 										goto isAddWithError;
 									}
+									var _invoiceIds = String.Join(",", iRowReceipt.invoice_id);
+									string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
+									string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
+
 									oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
 									oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
-									oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
+									//oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
+									oInvoice.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+														? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
 									string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
 									oIncomingPayment.Series = int.Parse(seriesNum);
 									////**** UDF ****\\\\     
