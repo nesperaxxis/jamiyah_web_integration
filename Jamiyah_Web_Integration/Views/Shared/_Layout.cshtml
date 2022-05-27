@@ -5,7 +5,7 @@
     <title>JEC WEB Integration</title>
     <link href="~/favicon.ico" rel="shortcut icon" type="image/x-icon" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="300" />
+    @*<meta http-equiv="refresh" content="300" />*@
     @Styles.Render("~/Content/css")
     @Scripts.Render("~/bundles/modernizr")
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
@@ -16,11 +16,26 @@
         var day = d.getDate();
 
         var currentDate = d.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + '01'; //(day < 10 ? '0' : '') + day + '';
+        currentDate = '2021-12-31'; //For syncing old data
+
+        var baseURL = 'https://v2.taidii.com/api/open/sap'; //'https://dev-new.taidii.com/api/open/sap';
+        var apiKey = 'N2H8LY0FqGGnnRftNbbFnzXVNqfR8YCp'; //'piRUbJ7d4AoXlH1TADBO';
+        var client = 'jamiyaeducenterUvZFySx3c8gy'; //'jmdev';
+
+        //var baseURL = 'https://dev-new.taidii.com/api/open/sap';
+        //var apiKey = 'piRUbJ7d4AoXlH1TADBO';
+        //var client = 'jmdev';
+        var timestamp = currentDate;
+        var studentsAPI = baseURL + '/student/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
+        var invoiceAPI = baseURL + '/invoice/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
+        var creditnotesAPI = baseURL + '/creditnotes/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
+        var receiptAPI = baseURL + '/receipt/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
+        var centeritemAPI = baseURL + '/centeritem/create/';
 
         var TAIDII_Sync = {
             StudentsData: function StudentsData() {
                 $.ajax({
-                    url: 'https://dev-new.taidii.com/api/open/sap/student/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
+                    url: studentsAPI,  //'https://dev-new.taidii.com/api/open/sap/student/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
                     type: 'GET',
                     dataType: 'json',
                     success: function (data) {
@@ -36,7 +51,7 @@
             },
             InvoiceData: function InvoiceData() {
                 $.ajax({
-                    url: 'https://dev-new.taidii.com/api/open/sap/invoice/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
+                    url: invoiceAPI, //'https://dev-new.taidii.com/api/open/sap/invoice/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
                     type: 'GET',
                     dataType: 'json',
                     success: function (data) {
@@ -52,7 +67,7 @@
             },
             CreditNoteData: function CreditNoteData() {
                 $.ajax({
-                    url: 'https://dev-new.taidii.com/api/open/sap/creditnotes/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
+                    url: creditnotesAPI, //'https://dev-new.taidii.com/api/open/sap/creditnotes/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
                     type: 'GET',
                     dataType: 'json',
                     success: function (data) {
@@ -69,7 +84,7 @@
 
             ReceiptData: function ReceiptData() {
                 $.ajax({
-                    url: 'https://dev-new.taidii.com/api/open/sap/receipt/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
+                    url: receiptAPI, //'https://dev-new.taidii.com/api/open/sap/receipt/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=' + currentDate + ' 00:00:00',
                     type: 'GET',
                     dataType: 'json',
                     success: function (data) {
@@ -88,12 +103,12 @@
         var POST_TO_TAIDII = {
             ItemMasterData: function () {                
                 $.ajax({
-                    url: 'https://dev-new.taidii.com/api/open/sap/centeritem/create/',
+                    url: centeritemAPI,  //'https://dev-new.taidii.com/api/open/sap/centeritem/create/',
                     type: 'POST',
                     dataType: 'json',
                     data: {
-                        api_key: "piRUbJ7d4AoXlH1TADBO",
-                        client: "jmdev",
+                        api_key: apiKey,
+                        client: client,
                         items: $("#result-itms").text()
                     },
                     success: function (_data) {
@@ -160,7 +175,7 @@
                         $("#result-inv").text(JSON.stringify(request));
                     },
                     complete: function () {
-                        TAIDII_Sync.ReceiptData();
+                        //TAIDII_Sync.ReceiptData();
                     }
                 });
             },
@@ -194,13 +209,16 @@
                         $("#result-pays").text(JSON.stringify(request));
                     },
                     complete: function () {
-                        GET_FROM_SAP.ItemMasterData();
+                        //GET_FROM_SAP.ItemMasterData();
                     }
                 });
             }
         };
         $(document).ready(function () {
-            TAIDII_Sync.StudentsData();
+            //TAIDII_Sync.StudentsData();
+            //TAIDII_Sync.InvoiceData();
+            TAIDII_Sync.ReceiptData();
+            //GET_FROM_SAP.ItemMasterData();
         });
     </script>
 </head>
