@@ -564,7 +564,7 @@ namespace Jamiyah_Web_Integration.SAPServices
 					{
 						string _checkIfExists = "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + iRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowInv.invoice_no + "'";
 						oTransId = (String)clsSBOGetRecord.GetSingleValue(_checkIfExists, sapCompany);
-						if (oTransId != "" || oTransId != "0")
+						if (oTransId != "" && oTransId != "0")
 						{
 							continue;
 						}
@@ -598,7 +598,10 @@ namespace Jamiyah_Web_Integration.SAPServices
 									hasItemCode = false;
 								}
 							}
-							if (!hasItemCode) continue;
+							if (!hasItemCode)
+							{
+								continue;
+							}
 
 							InvoiceModelHeader.Add(new API_Invoice()
 							{
@@ -1060,7 +1063,7 @@ namespace Jamiyah_Web_Integration.SAPServices
 										oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
 										oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
 										//oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
-										oInvoice.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+										oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
 															? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
 										string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
 										oIncomingPayment.Series = int.Parse(seriesNum);
@@ -1080,7 +1083,7 @@ namespace Jamiyah_Web_Integration.SAPServices
 
 											if (iRowReceipt.remarks.Length >= 200)
 											{
-												oIncomingPayment.Remarks = oCardName.Substring(0, 50) + " " + iRowReceipt.remarks;
+												oIncomingPayment.Remarks = oCardName.Substring(0, oCardName.Length > 50 ? 50 : oCardName.Length - 1) + " " + iRowReceipt.remarks.Substring(0, iRowReceipt.remarks.Length > 200 ? 200 : iRowReceipt.remarks.Length - 1);
 											}
 											else
 												oIncomingPayment.Remarks = oCardName + " " + iRowReceipt.remarks;
@@ -1088,7 +1091,8 @@ namespace Jamiyah_Web_Integration.SAPServices
 										{
 											if (iRowReceipt.void_remarks.Length >= 200)
 											{
-												oIncomingPayment.Remarks = oCardName.Substring(0, 50) + " " + iRowReceipt.void_remarks;
+												oIncomingPayment.Remarks = oCardName.Substring(0, oCardName.Length > 50 ? 50 : oCardName.Length - 1) + " " + iRowReceipt.void_remarks.Substring(0, iRowReceipt.void_remarks.Length > 200 ? 200 : iRowReceipt.void_remarks.Length - 1);
+												//oIncomingPayment.Remarks = oCardName.Substring(0, oCardName.Length > 50 ? 50 : oCardName.Length - 1) + " " + iRowReceipt.void_remarks;
 											}
 											else
 												oIncomingPayment.Remarks = oCardName + " " + iRowReceipt.void_remarks;
@@ -2037,7 +2041,15 @@ namespace Jamiyah_Web_Integration.SAPServices
 						if (oRowInv.status == 2)
 						{
 							bool hasItemCode = true;
-						   
+
+							string _checkIfExists = "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + oRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + oRowInv.invoice_no + "'";
+							var invoiceID = (String)clsSBOGetRecord.GetSingleValue(_checkIfExists, sapCompany);
+
+							if (String.IsNullOrEmpty(invoiceID) || invoiceID == "0")
+                            {
+								continue;
+                            }
+
 							//iDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ODRF\" where \"U_TransId\" = '" + oRowInv.id + "' and \"CANCELED\" = 'N' and \"ObjType\" = 13", sapCompany);
 							string Query =  "select \"U_TransId\" from \"ORIN\" where \"U_TransId\" = '" + oRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + oRowInv.invoice_no + "'";
 							iDocEntry = (String)clsSBOGetRecord.GetSingleValue(Query, sapCompany);
@@ -2361,13 +2373,12 @@ namespace Jamiyah_Web_Integration.SAPServices
 									oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
 									oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
 									//oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
-									oInvoice.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+									oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
 														? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
 									string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
 									oIncomingPayment.Series = int.Parse(seriesNum);
 									////**** UDF ****\\\\     
 									oIncomingPayment.UserFields.Fields.Item("U_TransId").Value = iRowReceipt.id.ToString();
-									oIncomingPayment.UserFields.Fields.Item("U_StatusTaidii").Value = iRowReceipt.status.ToString();
 									oIncomingPayment.UserFields.Fields.Item("U_StatusTaidii").Value = iRowReceipt.status.ToString();
 									oIncomingPayment.UserFields.Fields.Item("U_tax").Value = "N/A";
 									oIncomingPayment.UserFields.Fields.Item("U_ipc").Value = "NON-IPC";

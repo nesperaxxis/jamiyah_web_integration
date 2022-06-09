@@ -175,7 +175,7 @@
                         $("#result-inv").text(JSON.stringify(request));
                     },
                     complete: function () {
-                        //TAIDII_Sync.ReceiptData();
+                        TAIDII_Sync.ReceiptData();
                     }
                 });
             },
@@ -215,9 +215,9 @@
             }
         };
         $(document).ready(function () {
-            //TAIDII_Sync.StudentsData();
+            TAIDII_Sync.StudentsData();
             //TAIDII_Sync.InvoiceData();
-            TAIDII_Sync.ReceiptData();
+            //TAIDII_Sync.ReceiptData();
             //GET_FROM_SAP.ItemMasterData();
         });
     </script>
