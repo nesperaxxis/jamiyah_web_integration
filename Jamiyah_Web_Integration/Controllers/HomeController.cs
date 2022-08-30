@@ -44,6 +44,20 @@ namespace Jamiyah_Web_Integration.Controllers
             }
             return isSuccess;
         }
+        public bool SyncDownpayment(string jsonData)
+        {
+            bool isSuccess = false;
+            List<API_CreditNote> lstdp = Newtonsoft.Json.JsonConvert.DeserializeObject<List<API_CreditNote>>(jsonData);
+            if (lstdp.Count > 0)
+            {
+                clsStart clsStart = new clsStart();
+                clsStart.GetStarted();
+
+                Posting clsSBOClass = new Posting();
+                isSuccess = clsSBOClass.SBOPostDownpayment(lstdp, DateTime.Now.Date.ToString());
+            }
+            return isSuccess;
+        }
 
         [HttpGet]
         public string SyncSAPItems()

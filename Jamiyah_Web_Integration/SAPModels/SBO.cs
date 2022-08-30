@@ -57,7 +57,33 @@ namespace Jamiyah_Web_Integration.SAPModels
         public string program_type { get; set; }
         public virtual List<API_InvoiceDetails> items { get; set; }
     }
+    
+    //**Downpayment List**//
+    public class API_Downpayment
+    {
+        public int id { get; set; }
+        public string credit_no { get; set; }
+        public int credit_type { get; set; }
+        public string date_created { get; set; }
+        public string date_due { get; set; }
+        public int status { get; set; }
+        public string remarks { get; set; }
+        public string void_remarks { get; set; }
+        public string student { get; set; }
+        public string level { get; set; }
+        public string program_type { get; set; }
+        public int type { get; set; }
+        public int overpaid_receipt { get; set; }
+        public int payment_method { get; set; }
+        public virtual List<API_DownpaymentDetails> items { get; set; }
+    }
 
+    public class API_DownpaymentDetails
+    {
+        public string description { get; set; }
+        public string amount { get; set; }
+        public string gst { get; set; }
+    }
     public class API_InvoiceDetails
     {
         public string description { get; set; }

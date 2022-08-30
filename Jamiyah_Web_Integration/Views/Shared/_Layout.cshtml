@@ -17,6 +17,7 @@
 
         var currentDate = d.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + '01'; //(day < 10 ? '0' : '') + day + '';
         currentDate = '2021-12-31'; //For syncing old data
+        //currentDate = '2022-06-06';
 
         var baseURL = 'https://v2.taidii.com/api/open/sap'; //'https://dev-new.taidii.com/api/open/sap';
         var apiKey = 'N2H8LY0FqGGnnRftNbbFnzXVNqfR8YCp'; //'piRUbJ7d4AoXlH1TADBO';
@@ -28,9 +29,11 @@
         var timestamp = currentDate;
         var studentsAPI = baseURL + '/student/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
         var invoiceAPI = baseURL + '/invoice/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
-        var creditnotesAPI = baseURL + '/creditnotes/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
+        var creditnotesAPI = baseURL + '/creditnotes/list/?api_key=' + apiKey + '&client=' + client + '&include_adv=1&last_time_stamp=' + currentDate + ' 00:00:00';
         var receiptAPI = baseURL + '/receipt/list/?api_key=' + apiKey + '&client=' + client + '&last_time_stamp=' + currentDate + ' 00:00:00';
         var centeritemAPI = baseURL + '/centeritem/create/';
+
+
 
         var TAIDII_Sync = {
             StudentsData: function StudentsData() {
@@ -46,6 +49,22 @@
                     },
                     complete: function () {
                         POST_TO_SAP.StudentsData();
+                    }
+                });
+            },
+            DpData: function DpData() {
+                $.ajax({
+                    url: creditnotesAPI, //'https://dev-new.taidii.com/api/open/sap/invoice/list/?api_key=piRUbJ7d4AoXlH1TADBO&client=jmdev&last_time_stamp=2018/12/31 00:00:00',
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#result-dp").text(JSON.stringify(data));
+                    },
+                    error: function (request, error) {
+                        $("#result-dp").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        POST_TO_SAP.DpData();
                     }
                 });
             },
@@ -158,7 +177,25 @@
                         $("#result").text(JSON.stringify(request));
                     },
                     complete: function () {
+                        //TAIDII_Sync.DpData();
                         TAIDII_Sync.InvoiceData();
+                    }
+                });
+            },
+            DpData: function DpData() {
+                $.ajax({
+                    url: '/home/SyncDownpayment',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { jsonData: $("#result-dp").text() },
+                    success: function (data) {
+                        $("#result-dp").text(data);
+                    },
+                    error: function (request, error) {
+                        $("#result-dp").text(JSON.stringify(request));
+                    },
+                    complete: function () {
+                        //TAIDII_Sync.InvoiceData();
                     }
                 });
             },
@@ -215,8 +252,9 @@
             }
         };
         $(document).ready(function () {
-            TAIDII_Sync.StudentsData();
-            //TAIDII_Sync.InvoiceData();
+            //TAIDII_Sync.StudentsData();
+            //TAIDII_Sync.DpData();
+            TAIDII_Sync.InvoiceData();
             //TAIDII_Sync.ReceiptData();
             //GET_FROM_SAP.ItemMasterData();
         });
@@ -241,6 +279,7 @@
     <div class="container body-content">
         @*@RenderBody()*@
         <span>Student: </span><p id="result"></p>
+        <span>Downpayment: </span><p id="result-dp"></p>
         <span>Invoice: </span><p id="result-inv"></p>
         <span>Payment: </span><p id="result-pays"></p>
         <span>Items: </span><p id="result-itms"></p>
