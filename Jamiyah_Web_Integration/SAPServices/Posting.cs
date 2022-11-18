@@ -280,7 +280,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                     oBusinessPartners.ContactEmployees.FirstName = iRowBP.contact_nric;
 
                                 if (!string.IsNullOrEmpty(iRowBP.contact_telephone))
-                                    oBusinessPartners.ContactEmployees.Phone1 = iRowBP.contact_telephone;
+                                    oBusinessPartners.ContactEmployees.Phone1 = iRowBP.contact_telephone.Length >= 17 ? iRowBP.contact_telephone.Substring(0,17) : iRowBP.contact_telephone;
 
                                 if (!string.IsNullOrEmpty(iRowBP.contact_email))
                                     oBusinessPartners.ContactEmployees.E_Mail = iRowBP.contact_email;
@@ -418,7 +418,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                         oBusinessPartners.ContactEmployees.FirstName = iRowBP.contact_nric;
 
                                     if (!string.IsNullOrEmpty(iRowBP.contact_telephone))
-                                        oBusinessPartners.ContactEmployees.Phone1 = iRowBP.contact_telephone;
+                                        oBusinessPartners.ContactEmployees.Phone1 = iRowBP.contact_telephone.Length >= 17 ? iRowBP.contact_telephone.Substring(0, 17) : iRowBP.contact_telephone;
 
                                     if (!string.IsNullOrEmpty(iRowBP.contact_email))
                                         oBusinessPartners.ContactEmployees.E_Mail = iRowBP.contact_email;
@@ -548,7 +548,6 @@ namespace Jamiyah_Web_Integration.SAPServices
             string oCardName = string.Empty;
             string oDocEntry = string.Empty;
             string oDescription = string.Empty;
-            string oItemCode = string.Empty;
             string oDocType = string.Empty;
             SBOGetRecord clsSBOGetRecord = new SBOGetRecord();
             try
@@ -556,15 +555,292 @@ namespace Jamiyah_Web_Integration.SAPServices
                 if (SBOconnectToLoginCompany(SBOConstantClass.SBOServer, SBOConstantClass.Database, SBOConstantClass.ServerUN, SBOConstantClass.ServerPW, SBOConstantClass.SAPUser, SBOConstantClass.SAPPassword))
                 {
                     GetIntegrationSetup();
+                    foreach (var iRowCreditNote in lstdp)
+                    {
+                        try
+                        {
+                            oId = iRowCreditNote.id;
+                            oStatus = iRowCreditNote.status;
+
+                            CreditNoteModelHeader = new List<API_CreditNote>();
+                            CreditNoteModelDetails = new List<API_CreditNoteDetails>();
+
+                            ////**** Create a list of Credit Note ****////
+                            foreach (var iRowCreditNoteDtl in iRowCreditNote.items.ToList())
+                            {
+                                CreditNoteModelDetails.Add(new API_CreditNoteDetails()
+                                {
+                                    description = iRowCreditNoteDtl.description,
+                                    date_for = iRowCreditNoteDtl.date_for,
+                                    amount = iRowCreditNoteDtl.amount,
+                                    gst = iRowCreditNoteDtl.gst
+                                });
+                            }
+
+                            CreditNoteModelHeader.Add(new API_CreditNote()
+                            {
+                                id = iRowCreditNote.id,
+                                credit_no = iRowCreditNote.credit_no,
+                                credit_type = iRowCreditNote.credit_type,
+                                overpaid_receipt = iRowCreditNote.overpaid_receipt,
+                                student = iRowCreditNote.student,
+                                date_created = iRowCreditNote.date_created,
+                                status = iRowCreditNote.status,
+                                remarks = iRowCreditNote.remarks,
+                                void_remarks = iRowCreditNote.void_remarks,
+                                type = iRowCreditNote.type,
+                                level = iRowCreditNote.level,
+                                program_type = iRowCreditNote.program_type,
+                                payment_method = iRowCreditNote.payment_method,
+                                items = CreditNoteModelDetails.ToList()
+                            });
+
+                            string strJSON = JsonConvert.SerializeObject(CreditNoteModelHeader);
+
+                            oLogExist = (String)clsSBOGetRecord.GetSingleValue("select * from " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " where \"companyDB\" = '" + sapCompany.CompanyDB + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "' ", sapCompany);
+
+                            if (oLogExist == "" || oLogExist == "0")
+                            {
+                                Console.WriteLine("Adding Credit Note with Transaction Id:" + iRowCreditNote.id + " in the integration log. Please wait...");
+                                strQuery = "insert into " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " (\"lastTimeStamp\",\"companyDB\",\"module\",\"uniqueId\",\"docStatus\",\"status\",\"JSON\",\"statusCode\",\"successDesc\",\"failDesc\",\"logDate\",\"reference\") select '" + iif(APILastTimeStamp != "", APILastTimeStamp, sapCompany.GetDBServerDate().ToString("yyyy-MM-dd")) + "','" + TrimData(sapCompany.CompanyDB) + "','Credit Note','" + iRowCreditNote.id + "','" + iif(iRowCreditNote.status == 1, "Confirmed", "Void") + "','Draft','" + TrimData(strJSON) + "','For Process','','',null,'" + iRowCreditNote.credit_no + "' " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "", "from dummy;") + "";
+                                sapRecSet.DoQuery(strQuery);
+                                RecordCount += 1;
+                            }
+                            else
+                            {
+                                if (iRowCreditNote.status == 2)
+                                {
+                                    Console.WriteLine("Updating Credit Note with Transaction Id:" + iRowCreditNote.id + " in the integration log. Please wait...");
+                                    strQuery = "update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"docStatus\" = '" + iif(iRowCreditNote.status == 1, "Confirmed", "Void") + "',\"statusCode\" = 'For Process',\"JSON\" = '" + TrimData(strJSON) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(sapCompany.CompanyDB) + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "' and \"docStatus\" = 'Confirmed'";
+                                    sapRecSet.DoQuery(strQuery);
+                                }
+                            }
+
+                            ////**** Create a list of Credit Note ****////
+
+                            if (iRowCreditNote.status == 1)
+                            {
+                                Console.WriteLine("Processing Credit Note with Transaction Id:" + iRowCreditNote.id + " in SAP B1 Draft and A/R Credit Memo. Please wait...");
+
+                                string Query = "select \"U_TransId\" from \"ODPI\" where \"U_TransId\" = '" + iRowCreditNote.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowCreditNote.credit_no + "' and \"ObjType\" = 203  ";                           
+                                oTransId = (String)clsSBOGetRecord.GetSingleValue(Query, sapCompany);
+                                if (oTransId == "" || oTransId == "0")
+                                {
+                                    oCreditNote = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oDownPayments);
+                                    oCreditNote.DownPaymentType = SAPbobsCOM.DownPaymentTypeEnum.dptInvoice;
+                                    oCardCode = (String)clsSBOGetRecord.GetSingleValue("select \"CardCode\" from \"OCRD\" where \"CardCode\" = '" + iRowCreditNote.student + "'", sapCompany);
+                                    if (oCardCode != "")
+                                    {
+                                        oCreditNote.CardCode = oCardCode;
+                                    }
+                                    else
+                                    {
+                                        lastMessage = "Customer Code:" + iRowCreditNote.student + " is not found in SAP B1";
+                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowCreditNote.status == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + SBOConstantClass.Database + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+
+                                        functionReturnValue = true;
+
+                                        goto isAddWithError;
+                                    }
+                                    if (DateTime.Parse(iRowCreditNote.date_created) >= DateTime.Parse("07/01/2022") && DateTime.Parse(iRowCreditNote.date_created) <= DateTime.Parse("07/31/2022"))
+                                    {
+                                        iRowCreditNote.date_created = "07/01/2022";
+                                    }
+                                    else if (DateTime.Parse(iRowCreditNote.date_created) >= DateTime.Parse("08/01/2022") && DateTime.Parse(iRowCreditNote.date_created) <= DateTime.Parse("08/31/2022"))
+                                    {
+                                        iRowCreditNote.date_created = "08/01/2022";
+                                    }
 
 
+                                    oCreditNote.BPL_IDAssignedToInvoice = 5; //"Jamiyah Education Centre (JEC)";
+                                    oCreditNote.DocDate = Convert.ToDateTime(iRowCreditNote.date_created);
+                                    oCreditNote.NumAtCard = iRowCreditNote.credit_no;
+
+                                    if (iRowCreditNote.status == 1)
+                                        oCreditNote.Comments = iRowCreditNote.remarks;
+                                    else
+                                        oCreditNote.Comments = iRowCreditNote.void_remarks;
+
+                                    ////**** UDF *****/////
+                                    if (iRowCreditNote.id != 0)
+                                        oCreditNote.UserFields.Fields.Item("U_TransId").Value = iRowCreditNote.id.ToString();
+
+                                    if (iRowCreditNote.level != "")
+                                        oCreditNote.UserFields.Fields.Item("U_Level").Value = iRowCreditNote.level;
+
+                                    if (iRowCreditNote.program_type != "")
+                                        oCreditNote.UserFields.Fields.Item("U_ProgramType").Value = iRowCreditNote.program_type;
+
+
+                                    oCreditNote.UserFields.Fields.Item("U_branch").Value = "Jamiyah Education Centre (JEC)";
+                                  
+                                    foreach (var iRowCreditNoteDtls in iRowCreditNote.items.ToList())
+                                    {
+                                        if (iRowCreditNoteDtls.description != "")
+                                        {
+                                            oDocType = "dDocument_Items";
+
+                                            string iReplaceDesc = " (" + TrimData(iRowCreditNote.level) + " - " + TrimData(iRowCreditNote.program_type) + ")";
+                                            //oDescription = SBOstrManipulation.BeforeCharacter(iRowCreditNoteDtls.description, " (");
+                                            oDescription = iRowCreditNoteDtls.description.Replace(iReplaceDesc, "");
+
+                                            if (oDescription != "")
+                                            {
+                                                string description = oDescription;
+                                                //string iDescription = (String)clsSBOGetRecord.GetSingleValue("select \"U_Description\" from \"@GLACCTMAPPING\" where \"U_Description\" = '" + description + "' and \"U_Level\" = '" + iRowCreditNote.level + "' and \"U_ProgramType\" = '" + iRowCreditNote.program_type + "'", sapCompany);
+                                                string itemCode = (String)clsSBOGetRecord.GetSingleValue("select \"U_ccode\" from Jamiyah_Live..\"@JEC\" where \"U_descript\" = '" + TrimData(iRowCreditNoteDtls.description) + "' and \"U_unitprice\" = '" + iRowCreditNoteDtls.amount + "'", sapCompany);
+                                                itemCode = "JEC100102";
+                                                if (itemCode != "")
+                                                {
+                                                    string idate_created = string.Empty;
+                                                    string idate_for = string.Empty;
+                                                    string iGLAccount = "5000-005";//string.Empty;
+                                                    string oDateFor = string.Empty;
+
+                                                    if (string.IsNullOrEmpty(iRowCreditNoteDtls.date_for))
+                                                    {
+                                                        idate_for = iRowCreditNote.date_created;
+                                                        oDateFor = Convert.ToDateTime(idate_for).ToString("MMM") + " " + Convert.ToDateTime(idate_for).Year.ToString();
+                                                    }
+                                                    else
+                                                    {
+                                                        idate_for = iRowCreditNoteDtls.date_for;
+                                                        oDateFor = Convert.ToDateTime(idate_for).ToString("MMM") + " " + Convert.ToDateTime(idate_for).Year.ToString();
+                                                    }
+
+                                                    oCreditNote.Lines.ItemCode = itemCode;
+                                                    oCreditNote.Lines.Quantity = 1;
+
+                                                    oCardName = (String)clsSBOGetRecord.GetSingleValue("select \"CardName\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowCreditNote.student) + "'", sapCompany);
+
+                                                    string oTaxCode = "SR";
+                                                    //(String)clsSBOGetRecord.GetSingleValue("select \"U_TaxCode\" from \"@GLACCTMAPPING\" where \"U_Description\" = '" + TrimData(description) + "' and \"U_Level\" = '" + TrimData(iRowCreditNote.level) + "' and \"U_ProgramType\" = '" + TrimData(iRowCreditNote.program_type) + "'", sapCompany);
+
+                                                    if (!string.IsNullOrEmpty(oTaxCode))
+                                                        oCreditNote.Lines.VatGroup = oTaxCode;
+                                                    oCreditNote.Lines.PriceAfterVAT = iRowCreditNoteDtls.amount;
+
+                                                    oItemDescription = oCardName + " - " + oDateFor + " - " + iRowCreditNoteDtls.description;
+                                                    //oCreditNote.Lines.UserFields.Fields.Item("U_Dscription").Value = oItemDescription;
+                                                    oCreditNote.Lines.ItemDescription = iRowCreditNoteDtls.description;
+                                                    //oCreditNote.Lines.Price =   iRowCreditNoteDtls.amount;
+                                                    //oCreditNote.Lines.LineTotal = iRowCreditNoteDtls.amount;
+                                                    oCreditNote.Lines.UnitsOfMeasurment = 1;
+                                                    //if (!string.IsNullOrEmpty(iRowCreditNote.date_created))
+                                                    //    idate_created = iRowCreditNote.date_created;
+
+                                                    //oCreditNote.Lines. = "1";
+                                                    oCreditNote.Lines.ProjectCode = "00";
+                                                    oCreditNote.Lines.CostingCode = "21";
+                                                    oCreditNote.Lines.CostingCode2 = "N/A";
+                                                    oCreditNote.Lines.CostingCode3 = "G_00";
+                                                    oCreditNote.Lines.CostingCode4 = "Default";
+                                                    oCreditNote.Lines.AccountCode = iGLAccount;
+
+
+                                                    oCreditNote.Lines.Add();
+                                                }
+                                                else
+                                                {
+                                                    lastMessage = "Description:" + iRowCreditNoteDtls.description + ", Level: " + iRowCreditNote.level + " or Program type:" + iRowCreditNote.program_type + " is not defined in SAP B1. Please define in the table.";
+                                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowCreditNote.status == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + SBOConstantClass.Database + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+
+                                                    functionReturnValue = true;
+
+                                                    goto isAddWithError;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (oDocType == "dDocument_Items")
+                                        oCreditNote.DocType = BoDocumentTypes.dDocument_Items;
+                                    else
+                                        oCreditNote.DocType = BoDocumentTypes.dDocument_Service;
+
+                                    lErrCode = oCreditNote.Add();
+                                    if (lErrCode == 0)
+                                    {
+                                        try
+                                        {
+                                            oDocEntry = sapCompany.GetNewObjectKey();
+                                            lastMessage = "Successfully created Credit Note (Draft) with Transaction Id:" + iRowCreditNote.id + " in SAP B1.";
+                                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 112 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+                                            string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
+                                            var InPay = (SAPbobsCOM.Payments)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oIncomingPayments);
+                                            InPay.Series = int.Parse(seriesNum);
+                                            InPay.CardCode = oCreditNote.CardCode;
+                                            InPay.BPLID = oCreditNote.BPL_IDAssignedToInvoice;
+                                            InPay.DocDate = oCreditNote.DocDate;
+                                            InPay.CashAccount = "3040-001";
+                                            InPay.CashSum = iRowCreditNote.items.Sum(x => x.amount);
+                                            InPay.Invoices.DocEntry = Convert.ToInt32(oDocEntry);
+                                            InPay.Invoices.InvoiceType = SAPbobsCOM.BoRcptInvTypes.it_DownPayment;
+                                            InPay.UserFields.Fields.Item("U_TransId").Value = iRowCreditNote.id.ToString();
+                                            //oIncomingPayment.UserFields.Fields.Item("U_StatusTaidii").Value = iRowCreditNote.status.ToString();
+                                            InPay.UserFields.Fields.Item("U_tax").Value = "N/A";
+                                            InPay.UserFields.Fields.Item("U_ipc").Value = "NON-IPC";
+                                            //oIncomingPayment.UserFields.Fields.Item("U_Level").Value = iRowReceipt.level;
+                                            //oIncomingPayment.UserFields.Fields.Item("U_ProgramType").Value = iRowReceipt.program_type;
+                                            InPay.UserFields.Fields.Item("U_ReceiptNo").Value = "N/A";
+                                            InPay.UserFields.Fields.Item("U_branch").Value = "Jamiyah Education Centre (JEC)";
+                                            var lRetCode = InPay.Add();
+
+                                            if (lRetCode != 0)
+                                            {
+                                                lastMessage = sapCompany.GetLastErrorDescription();
+                                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowCreditNote.status == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+                                            }
+                                            else
+                                            {
+                                                lastMessage = "Successfully created Payment for Downpayment Invoice with Transaction Id:" + iRowCreditNote.id + " in SAP B1.";
+                                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 112 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+                                            }
+
+                                                functionReturnValue = false;
+                                        }
+                                        catch
+                                        { }
+                                    }
+                                    else
+                                    {
+                                        lastMessage = sapCompany.GetLastErrorDescription();
+                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowCreditNote.status == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "'");
+
+                                        functionReturnValue = true;
+
+                                        goto isAddWithError;
+                                    }
+
+                                isAddWithError:;
+
+                                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oCreditNote);
+
+                                }
+                                else
+                                {
+                                    oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ODRF\" where \"U_TransId\" = '" + iRowCreditNote.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowCreditNote.credit_no + "' and \"ObjType\" = 14 and \"U_CreatedByVoucher\" = 0", sapCompany);
+                                    lastMessage = "Credit Note with Transaction Id:" + iRowCreditNote.id + " is already existing in SAP B1 Draft.";
+
+                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 112 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Invoice' and \"uniqueId\" = '" + iRowCreditNote.id + "' and \"sapCode\" is null");
+
+                                    functionReturnValue = true;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            lastMessage = ex.ToString();
+                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowCreditNote.status == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + sapCompany.CompanyDB + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + iRowCreditNote.id + "' and \"sapCode\" is not null");
+                        }
+                    }
+                    Console.WriteLine("Done adding the List of " + string.Format("{0:#,##0}", RecordCount) + " Credit Note(s) in the integration log. Please wait...");
                 }
-
             }
             catch (Exception ex)
             {
                 lastMessage = ex.ToString();
-                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(oStatus == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(sapCompany.CompanyDB) + "' and \"module\" = 'Invoice' and \"uniqueId\" = '" + oId + "' and \"sapCode\" is not null");
+                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(oStatus == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + lastMessage + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + sapCompany.CompanyDB + "' and \"module\" = 'Credit Note' and \"uniqueId\" = '" + oId + "' and \"sapCode\" is not null");
             }
 
             return functionReturnValue;
@@ -585,6 +861,7 @@ namespace Jamiyah_Web_Integration.SAPServices
             string oDescription = string.Empty;
             string oItemCode = string.Empty;
             string oDocType = string.Empty;
+            List<API_Invoice> notAdded = new List<API_Invoice>();
             SBOGetRecord clsSBOGetRecord = new SBOGetRecord();
             try
             {
@@ -624,13 +901,17 @@ namespace Jamiyah_Web_Integration.SAPServices
                     #endregion
 
                     var invoices = listInvoice.Where(x => x.status == 1).ToList();
-                    invoices = listInvoice.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("02/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("02/28/2022")).ToList();
+                    //var invoices = listInvoice.Where(x => x.status == 1 && x.invoice_no == "INV-002786").ToList();
                     //return true;
+                    //invoices = listInvoice.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("02/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("02/28/2022")).ToList();
+                    //invoices = invoices.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("09/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("09/30/2022")).ToList();
+                    //return true;
+
                     foreach (var iRowInv in invoices)
                     {
                         string _checkIfExists = "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + iRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowInv.invoice_no + "'";
                         oTransId = (String)clsSBOGetRecord.GetSingleValue(_checkIfExists, sapCompany);
-                        if (oTransId != "" && oTransId != "0")
+                        if (oTransId != "" && oTransId != "0" && !iRowInv.downPaymentAmount.HasValue && !iRowInv.downPaymentDocEntry.HasValue)
                         {
                             continue;
                         }
@@ -647,14 +928,14 @@ namespace Jamiyah_Web_Integration.SAPServices
                             ////**** Create a list of Invoices ****////
                             foreach (var iRowInvDtl in iRowInv.items.ToList())
                             {
-                                iRowInvDtl.item_code = (String)clsSBOGetRecord.GetSingleValue("select \"U_ccode\" from \"@JEC\" where \"U_descript\" = '" + TrimData(iRowInvDtl.description) + "' and \"U_unitprice\" = '" + iRowInvDtl.unit_price + "'", sapCompany);
+                                iRowInvDtl.item_code = (String)clsSBOGetRecord.GetSingleValue("select \"U_ccode\" from Jamiyah_Live..\"@JEC\" where \"U_descript\" = '" + TrimData(iRowInvDtl.description) + "' and \"U_unitprice\" = '" + iRowInvDtl.unit_price + "'", sapCompany);
                                 InvoiceModelDetails.Add(new API_InvoiceDetails()
                                 {
                                     description = iRowInvDtl.description,
                                     item_code = iRowInvDtl.item_code,
                                     date_for = iRowInvDtl.date_for,
                                     unit_price = iRowInvDtl.unit_price,
-                                    quantity = iRowInvDtl.quantity,
+                                    quantity = iRowInvDtl.unit_price < 1 ? -1 : iRowInvDtl.quantity,
                                     total = iRowInvDtl.total
                                 });
 
@@ -662,6 +943,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 if (String.IsNullOrEmpty(iRowInvDtl.item_code))
                                 {
                                     hasItemCode = false;
+                                    notAdded.Add(iRowInv);
                                 }
                             }
                             if (!hasItemCode)
@@ -669,8 +951,29 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 continue;
                             }
 
-                            iRowInv.date_created = "07/02/2022";
-                            iRowInv.date_due = "07/02/2022";
+                            //iRowInv.date_created = "07/02/2022";
+                            //iRowInv.date_due = "07/02/2022";
+                            //if (DateTime.Parse(iRowInv.date_created) >= DateTime.Parse("07/01/2022") && DateTime.Parse(iRowInv.date_created) <= DateTime.Parse("07/31/2022"))
+                            //{
+                            //    iRowInv.date_created = "07/07/2022";
+                            //    iRowInv.date_due = "07/07/2022";
+                            //}
+                            //else if (DateTime.Parse(iRowInv.date_created) >= DateTime.Parse("08/01/2022") && DateTime.Parse(iRowInv.date_created) <= DateTime.Parse("08/31/2022"))
+                            //{
+                            //    iRowInv.date_created = "08/01/2022";
+                            //    iRowInv.date_due = "08/01/2022";
+                            //}
+
+                            ////else if (DateTime.Parse(iRowInv.date_created) >= DateTime.Parse("06/01/2022") && DateTime.Parse(iRowInv.date_created) <= DateTime.Parse("06/30/2022"))
+                            ////{
+                            ////    iRowInv.date_created = "07/06/2022";
+                            ////    iRowInv.date_due = "07/06/2022";
+                            ////}
+                            //else
+                            //{
+                            //    continue;
+                            //}
+
 
                             InvoiceModelHeader.Add(new API_Invoice()
                             {
@@ -709,7 +1012,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 "union all " + Environment.NewLine +
                                 "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + iRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowInv.invoice_no + "'";
                                 oTransId = (String)clsSBOGetRecord.GetSingleValue(Query, sapCompany);
-                                if (oTransId == "" || oTransId == "0")
+                                if (oTransId == "" || oTransId == "0" || (iRowInv.downPaymentDocEntry.HasValue && iRowInv.downPaymentAmount.HasValue))
                                 {
                                     oInvoice = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
                                     oInvoice.DocObjectCode = BoObjectTypes.oInvoices;
@@ -730,7 +1033,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                         goto isAddWithError;
                                     }
 
-                                    string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like 'JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '13'", sapCompany);
+                                    string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like 'JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '13' ORDER BY LastNum DESC", sapCompany);
                                     oInvoice.BPL_IDAssignedToInvoice = 5; //"Jamiyah Education Centre (JEC)";
                                     oInvoice.DocDate = Convert.ToDateTime(iRowInv.date_created);
                                     oInvoice.NumAtCard = iRowInv.invoice_no;
@@ -891,6 +1194,22 @@ namespace Jamiyah_Web_Integration.SAPServices
 
                                     oInvoice.DocType = BoDocumentTypes.dDocument_Items;
 
+                                    if (iRowInv.downPaymentAmount.HasValue && iRowInv.downPaymentDocEntry.HasValue)
+                                    {
+                                        var dpDraw = oInvoice.DownPaymentsToDraw;
+                                        var dpAmount = double.Parse(iRowInv.downPaymentAmount.ToString());
+                                        var docTotal = iRowInv.items.Sum(x => x.unit_price);
+                                        if (dpAmount > docTotal)
+                                        {
+                                            dpDraw.AmountToDraw = docTotal;
+                                        }
+                                        else
+                                        {
+                                            dpDraw.AmountToDraw = dpAmount;
+                                        }
+                                       
+                                        dpDraw.DocEntry = iRowInv.downPaymentDocEntry.Value;
+                                    }                                    
 
                                     lErrCode = oInvoice.Add();
                                     if (lErrCode == 0)
@@ -901,10 +1220,17 @@ namespace Jamiyah_Web_Integration.SAPServices
                                             lastMessage = "Successfully created Invoice (Draft) with Transaction Id:" + iRowInv.id + " in SAP B1.";
                                             sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 112 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Invoice' and \"uniqueId\" = '" + iRowInv.id + "'");
 
+                                            if (iRowInv.downPaymentDocEntry.HasValue)
+                                            {
+                                                CancelInvoiceForDP(int.Parse(oDocEntry), iRowInv.oldInvDocEntry.Value);
+                                            }                                          
+
                                             functionReturnValue = false;
                                         }
-                                        catch
-                                        { }
+                                        catch (Exception ex)
+                                        {
+                                            lastMessage = sapCompany.GetLastErrorDescription();
+                                        }
                                     }
                                     else
                                     {
@@ -932,7 +1258,8 @@ namespace Jamiyah_Web_Integration.SAPServices
                     }
 
                     var voidInvoices = listInvoice.Where(x => x.status == 2).ToList();
-                    voidInvoices = voidInvoices.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("03/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("03/31/2022")).ToList();
+                    //voidInvoices = voidInvoices.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("03/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("03/31/2022")).ToList();
+                    voidInvoices = voidInvoices.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("04/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("06/30/2022")).ToList();
                     if (voidInvoices.Count > 0)
                     {
                         Int32 iDocEntry = CreateInvoiceVoid(voidInvoices);
@@ -951,13 +1278,17 @@ namespace Jamiyah_Web_Integration.SAPServices
                 lastMessage = ex.ToString();
                 sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(oStatus == 1, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(sapCompany.CompanyDB) + "' and \"module\" = 'Invoice' and \"uniqueId\" = '" + oId + "' and \"sapCode\" is not null");
             }
-
+            notAdded = notAdded;
+            var _s = String.Join("\r\n", notAdded.Select(x => x.items).Select(y => String.Join("\r\n", y.Select(z => "Item: " + z.description + " \r\n" + "price: " + z.unit_price.ToString()).Distinct().ToList())).Select(v => v).Distinct().ToList().Select(x => x).Distinct().ToList());
             return functionReturnValue;
-        }
-
+        }   
 
         public bool SBOPostReceipt(List<API_Receipt> listReceipt)
         {
+            //var receiptNums = new string[] { "RCP-000353", "RCP-000347", "RCP-000285", "RCP-000256", "RCP-000037", "RCP-000669", "RCP-000668", "RCP-000586", "RCP-001491", "RCP-000604", "RCP-001114","RCP-001115", " RCP-001116", "RCP-001128" };
+            //var receiptNums = new string[] { "RCP-001491", "RCP-000604", "RCP-001114", "RCP-001115", "RCP-001128" };
+            //var receiptNums = new string[] { "RCP-000668", "RCP-000669", "RCP-000037", "RCP-000285", "RCP-000347", "RCP-000353", "RCP-000586", "RCP-000256" };
+            //var receiptNums = new string[] { "RCP-003139" };
             bool functionReturnValue = false;
             int lErrCode = 0;
             string oLogExist = string.Empty;
@@ -980,9 +1311,15 @@ namespace Jamiyah_Web_Integration.SAPServices
                 {
                     GetIntegrationSetup();
 
-                    listReceipt = listReceipt.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("02/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("02/28/2022")).ToList();
+                    //listReceipt = listReceipt.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("04/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("06/30/2022")).ToList();
 
-                    foreach (var iRowReceipt in listReceipt)
+                    //CreateReceiptVoid(listReceipt);
+                    //return functionReturnValue;
+                    //listReceipt = listReceipt.Where(x => receiptNums.Contains(x.receipt_no)).ToList();
+
+                    var newReceipt = listReceipt.Where(x => x.status == 0).ToList();
+             
+                    foreach (var iRowReceipt in newReceipt)
                     {
                         try
                         {
@@ -1022,10 +1359,27 @@ namespace Jamiyah_Web_Integration.SAPServices
 
                                         oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
                                         oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
+                                        //if (DateTime.Parse(iRowReceipt.date_created) >= DateTime.Parse("04/01/2022") && DateTime.Parse(iRowReceipt.date_created) <= DateTime.Parse("04/30/2022"))
+                                        //{
+                                        //    oIncomingPayment.DocDate = Convert.ToDateTime("07/04/2022");
+                                        //}
+                                        //else if (DateTime.Parse(iRowReceipt.date_created) >= DateTime.Parse("05/01/2022") && DateTime.Parse(iRowReceipt.date_created) <= DateTime.Parse("05/31/2022"))
+                                        //{
+                                        //    oIncomingPayment.DocDate = Convert.ToDateTime("07/05/2022");
+                                        //}
 
-                                        oIncomingPayment.DocDate = Convert.ToDateTime("07/02/2022");
-                                        //oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
-                                        //					? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
+                                        //else if (DateTime.Parse(iRowReceipt.date_created) >= DateTime.Parse("06/01/2022") && DateTime.Parse(iRowReceipt.date_created) <= DateTime.Parse("06/30/2022"))
+                                        //{
+                                        //    oIncomingPayment.DocDate = Convert.ToDateTime("07/06/2022");
+                                        //}
+                                        //else
+                                        //{
+                                        //    continue;
+                                        //}
+                                        //oIncomingPayment.DocDate = Convert.ToDateTime("07/06/2022");
+
+                                        oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+                                                            ? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
                                         string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
                                         oIncomingPayment.Series = int.Parse(seriesNum);
                                         ////**** UDF ****\\\\     
@@ -1349,149 +1703,172 @@ namespace Jamiyah_Web_Integration.SAPServices
                                         functionReturnValue = true;
                                     }
                                 }
-                                else
-                                {
-                                    oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
-                                    if (oDocEntry != "" && oDocEntry != "0") //**** Voiding of Incoming Payment when it is already existing SAP B1. ****\\
-                                    {
-                                        oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-                                        if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
-                                        {
-                                            lErrCode = oIncomingPayment.Cancel();
-                                            if (lErrCode == 0)
-                                            {
-                                                try
-                                                {
-                                                    lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
-                                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                #region unused code
+                                //else
+                                //{                                  
 
-                                                    functionReturnValue = false;
-                                                }
-                                                catch (Exception ex)
-                                                { }
-                                            }
-                                            else
-                                            {
-                                                lastMessage = sapCompany.GetLastErrorDescription();
-                                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                //    oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
+                                //    if (oDocEntry != "" && oDocEntry != "0") //**** Voiding of Incoming Payment when it is already existing SAP B1. ****\\
+                                //    {
+                                //        oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
+                                //        if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
+                                //        {
+                                //            lErrCode = oIncomingPayment.Cancel();
+                                //            if (lErrCode == 0)
+                                //            {
+                                //                try
+                                //                {
+                                //                    lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                                //                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
 
-                                                functionReturnValue = true;
-                                            }
-                                            System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        CreateReceiptVoid(listReceipt.Where(x => x.id == iRowReceipt.id).ToList());
-                                    }
-                                    #region unused code
-                                    //else //**** Creation of Incoming Payment in SAP B1 before voiding the Incoming Payment. ****\\
-                                    //{
-                                    //	Int32 oDocEntryORCT = 0;
-                                    //	string oDocEntryOPDF = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
-                                    //	if (oDocEntryOPDF == "" || oDocEntryOPDF == "0")
-                                    //	{
-                                    //		oDocEntryORCT = 
-                                    //		SAPbobsCOM.Payments oIncomingDraft = (Payments)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oIncomingPayments);
-                                    //		if (oDocEntryORCT != 0)
-                                    //		{
-                                    //			if (oIncomingDraft.GetByKey(oDocEntryORCT))
-                                    //			{
-                                    //				int ErrCode = oIncomingDraft.Update();
-                                    //				if (ErrCode == 0)
-                                    //				{
-                                    //					oDocEntry = sapCompany.GetNewObjectKey();
-                                    //					oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-                                    //					if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
-                                    //					{
-                                    //						lErrCode = oIncomingPayment.Cancel();
-                                    //						if (lErrCode == 0)
-                                    //						{
-                                    //							try
-                                    //							{
-                                    //								oDocEntry = sapCompany.GetNewObjectKey();
-                                    //								lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
-                                    //								sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 24 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                //                    functionReturnValue = false;
+                                //                }
+                                //                catch (Exception ex)
+                                //                { }
+                                //            }
+                                //            else
+                                //            {
+                                //                lastMessage = sapCompany.GetLastErrorDescription();
+                                //                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
 
-                                    //								functionReturnValue = false;
-                                    //							}
-                                    //							catch (Exception ex)
-                                    //							{ }
-                                    //						}
-                                    //						else
-                                    //						{
-                                    //							lastMessage = sapCompany.GetLastErrorDescription();
-                                    //							sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                //                functionReturnValue = true;
+                                //            }
+                                //            System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
+                                //        }
+                                //    }
+                                //    //else
+                                //    //{
+                                //    //    CreateReceiptVoid(listReceipt.Where(x => x.id == iRowReceipt.id).ToList());
+                                //    //}
 
-                                    //							functionReturnValue = true;
-                                    //						}
-                                    //						System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
-                                    //					}
-                                    //				}
-                                    //			}
-                                    //			System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingDraft);
-                                    //		}
-                                    //	}
-                                    //}
-                                    #endregion
-                                }
+                                //    //else //**** Creation of Incoming Payment in SAP B1 before voiding the Incoming Payment. ****\\
+                                //    //{
+                                //    //	Int32 oDocEntryORCT = 0;
+                                //    //	string oDocEntryOPDF = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
+                                //    //	if (oDocEntryOPDF == "" || oDocEntryOPDF == "0")
+                                //    //	{
+                                //    //		oDocEntryORCT = 
+                                //    //		SAPbobsCOM.Payments oIncomingDraft = (Payments)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oIncomingPayments);
+                                //    //		if (oDocEntryORCT != 0)
+                                //    //		{
+                                //    //			if (oIncomingDraft.GetByKey(oDocEntryORCT))
+                                //    //			{
+                                //    //				int ErrCode = oIncomingDraft.Update();
+                                //    //				if (ErrCode == 0)
+                                //    //				{
+                                //    //					oDocEntry = sapCompany.GetNewObjectKey();
+                                //    //					oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
+                                //    //					if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
+                                //    //					{
+                                //    //						lErrCode = oIncomingPayment.Cancel();
+                                //    //						if (lErrCode == 0)
+                                //    //						{
+                                //    //							try
+                                //    //							{
+                                //    //								oDocEntry = sapCompany.GetNewObjectKey();
+                                //    //								lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                                //    //								sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 24 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                                //    //								functionReturnValue = false;
+                                //    //							}
+                                //    //							catch (Exception ex)
+                                //    //							{ }
+                                //    //						}
+                                //    //						else
+                                //    //						{
+                                //    //							lastMessage = sapCompany.GetLastErrorDescription();
+                                //    //							sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                                //    //							functionReturnValue = true;
+                                //    //						}
+                                //    //						System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
+                                //    //					}
+                                //    //				}
+                                //    //			}
+                                //    //			System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingDraft);
+                                //    //		}
+                                //    //	}
+                                //    //}
+
+                                //}
+                                #endregion
                                 System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
                             }
-                            #region unused code
-                            //else
-                            //{
-                            //	//0 = no offset
-                            //	//1 = has both payment and offset
-                            //	//2 = only offset type
-                            //	foreach (var iRowReceiptOffSetDtls in iRowReceipt.offset_references.ToList())
-                            //	{
-                            //		string oDocEntryORIN = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORIN\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 14", sapCompany);
-                            //		if (oDocEntryORIN == "" || oDocEntryORIN == "0")
-                            //		{
-                            //			string oDraftDocEntry = string.Empty;
-                            //			oDraftDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 14", sapCompany);
-                            //			if (oDraftDocEntry != "" && oDraftDocEntry != "0")
-                            //			{
-                            //				SAPbobsCOM.Documents oDraft = (Documents)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oIncomingPayments);
-                            //				if (oDraft.GetByKey(Convert.ToInt16(oDraftDocEntry)))
-                            //				{
-                            //					int ErrCode = oDraft.SaveDraftToDocument();
-                            //					if (ErrCode == 0)
-                            //					{
-                            //						oDocEntry = sapCompany.GetNewObjectKey();
-                            //						lastMessage = "Successfully created Credit Note (Deposit) with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
-                            //						sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 14 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                            
+                            else
+                            {
+                                //0 = no offset
+                                //1 = has both payment and offset
+                                //2 = only offset type
+                                foreach (var iRowReceiptOffSetDtls in iRowReceipt.offset_references.ToList())
+                                {
+                                    string oDocEntryODPI = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ODPI\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 203", sapCompany);
 
-                            //						functionReturnValue = false;
-                            //					}
-                            //					else
-                            //					{
-                            //						lastMessage = sapCompany.GetLastErrorDescription();
-                            //						sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                    if (String.IsNullOrEmpty(oDocEntryODPI) || oDocEntryODPI == "0") 
+                                    { 
+                                        continue; 
+                                    }
 
-                            //						functionReturnValue = true;
-                            //					}
-                            //				}
-                            //				System.Runtime.InteropServices.Marshal.ReleaseComObject(oDraft);
-                            //			}
-                            //			else
-                            //			{
-                            //				lastMessage = "Credit Note (Deposit) with Reference Id:" + iRowReceiptOffSetDtls.ToString() + " does not exist in SAP B1.";
-                            //				sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                    string DpmAppl = (String)clsSBOGetRecord.GetSingleValue("select CAST(DpmAppl as nvarchar(max)) [DpmAppl] from \"ODPI\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 203", sapCompany);
+                                    string DpmAmnt = (String)clsSBOGetRecord.GetSingleValue("select CAST(DpmAmnt as nvarchar(max)) [DpmAmnt] from \"ODPI\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 203", sapCompany);
 
-                            //				functionReturnValue = true;
-                            //			}
-                            //		}
-                            //		else
-                            //		{
-                            //			lastMessage = "Credit Note (Deposit) with Reference Id:" + iRowReceiptOffSetDtls.ToString() + " already posted in SAP B1.";
-                            //			sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Confirmed", "Void") + "',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntryORIN + "',\"objType\" = 14 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                    var remainingDPAmount = (Double.Parse(DpmAmnt) - Double.Parse(DpmAppl));
+                                    if (remainingDPAmount <= 0) continue;
 
-                            //			functionReturnValue = false;
-                            //		}
-                            //	}
-                            //}
-                            #endregion
+                                    foreach (var offsetInvoiceNo in iRowReceipt.invoice_id.ToList())
+                                    {
+                                        SAPbobsCOM.Documents _dpDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oDownPayments);
+                                        _dpDoc.GetByKey(int.Parse(oDocEntryODPI));
+
+                                        string oDocEntryOINV = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OINV\" where \"U_TransId\" = '" + offsetInvoiceNo.ToString() + "' and \"DocStatus\" = 'O' and \"CANCELED\" = 'N' and \"ObjType\" = 13", sapCompany);
+                                        if (!String.IsNullOrEmpty(oDocEntryOINV) && oDocEntryOINV != "0" && !String.IsNullOrEmpty(oDocEntryODPI) && oDocEntryODPI != "0")
+                                        {
+
+                                            SAPbobsCOM.Documents _invDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
+                                            _invDoc.GetByKey(int.Parse(oDocEntryOINV));
+
+                                            var newInv = new API_Invoice()
+                                            {
+                                                id = int.Parse(_invDoc.UserFields.Fields.Item("U_TransId").Value?.ToString() ?? "0"),
+                                                invoice_no = _invDoc.NumAtCard,
+                                                date_created = _invDoc.DocDate.ToString(),
+                                                date_due = _invDoc.DocDueDate.ToString(),
+                                                status = 1,
+                                                remarks = _invDoc.Comments,
+                                                void_remarks = _invDoc.Comments,
+                                                student = _invDoc.CardCode,
+                                                level = _invDoc.UserFields.Fields.Item("U_Level").Value?.ToString(),
+                                                program_type = _invDoc.UserFields.Fields.Item("U_ProgramType").Value?.ToString(),
+                                                downPaymentAmount = float.Parse(remainingDPAmount.ToString()),
+                                                downPaymentDocEntry = _dpDoc.DocEntry,
+                                                oldInvDocEntry = int.Parse(oDocEntryOINV),
+                                            };
+                                      
+                                            newInv.items = new List<API_InvoiceDetails>();
+                                            for(int i = 0; i < _invDoc.Lines.Count; i++)
+                                            {
+                                                _invDoc.Lines.SetCurrentLine(i);
+                                                newInv.items.Add(new API_InvoiceDetails()
+                                                {
+                                                    description = _invDoc.Lines.ItemDescription,
+                                                    item_code = _invDoc.Lines.ItemCode,
+                                                    date_for =  _invDoc.DocDate.ToString(),
+                                                    unit_price = float.Parse(_invDoc.Lines.LineTotal.ToString()),
+                                                    quantity = float.Parse(_invDoc.Lines.Quantity.ToString()),
+                                                    total = float.Parse(_invDoc.Lines.Quantity.ToString())
+                                                });
+                                            }
+                                            var invoices = new List<API_Invoice>();
+                                            invoices.Add(newInv);
+                                            SBOPostInvoice(invoices, DateTime.Now.Date.ToString());
+
+
+                                            
+                                        }
+                                    }
+                                }
+                               
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -1501,6 +1878,8 @@ namespace Jamiyah_Web_Integration.SAPServices
                         }
 
                     }
+
+                    CreateReceiptVoid(listReceipt.Where(x => x.status != 0).ToList());
                 }
 
             }
@@ -1999,7 +2378,8 @@ namespace Jamiyah_Web_Integration.SAPServices
                 string iDocType = string.Empty;
                 SBOGetRecord clsSBOGetRecord = new SBOGetRecord();
 
-                olistInvoice = olistInvoice.Where(x => DateTime.Parse(x.date_created) < DateTime.Parse("06/01/2022")).ToList();
+                //olistInvoice = olistInvoice.Where(x => DateTime.Parse(x.date_created) < DateTime.Parse("06/01/2022")).ToList();
+                olistInvoice = olistInvoice.Where(x => DateTime.Parse(x.date_created) >= DateTime.Parse("09/01/2022") && DateTime.Parse(x.date_created) <= DateTime.Parse("09/30/2022")).ToList();
                 foreach (var oRowInv in olistInvoice)
                 {
                     try
@@ -2027,7 +2407,27 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 var CancelInvoice = Invoice.CreateCancellationDocument();
                                 CancelInvoice.Comments = oRowInv.void_remarks;
                                 if (CancelInvoice.Add() == 0) continue;
+                               
 
+                                //if (DateTime.Parse(oRowInv.date_created) >= DateTime.Parse("07/01/2022") && DateTime.Parse(oRowInv.date_created) <= DateTime.Parse("07/31/2022"))
+                                //{
+                                //    oRowInv.date_created = "07/07/2022";
+                                //    oRowInv.date_due = "07/07/2022";
+                                //}
+                                //else if (DateTime.Parse(oRowInv.date_created) >= DateTime.Parse("08/01/2022") && DateTime.Parse(oRowInv.date_created) <= DateTime.Parse("08/31/2022"))
+                                //{
+                                //    oRowInv.date_created = "08/01/2022";
+                                //    oRowInv.date_due = "08/01/2022";
+                                //}
+                                ////else if (DateTime.Parse(oRowInv.date_created) >= DateTime.Parse("06/01/2022") && DateTime.Parse(oRowInv.date_created) <= DateTime.Parse("06/30/2022"))
+                                ////{
+                                ////    oRowInv.date_created = "07/06/2022";
+                                ////    oRowInv.date_due = "07/06/2022";
+                                ////}
+                                //else
+                                //{
+                                //    continue;
+                                //}
 
                                 oInvoice = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oCreditNotes);
                                 oInvoice.DocObjectCode = BoObjectTypes.oCreditNotes;
@@ -2051,8 +2451,9 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 var _invoiceIds = String.Join(",", oRowInv.invoice_no);
                                 string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
                                 string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
-                                oRowInv.date_created = "07/02/2022";
-                                oRowInv.date_due = "07/02/2022";
+                                //oRowInv.date_created = "07/02/2022";
+                                //oRowInv.date_due = "07/02/2022";
+                                
 
                                 oInvoice.BPL_IDAssignedToInvoice = 5; //"Jamiyah Education Centre (JEC)";
                                 oInvoice.DocDate = Convert.ToDateTime(oRowInv.date_created);
@@ -2309,381 +2710,419 @@ namespace Jamiyah_Web_Integration.SAPServices
             SBOGetRecord clsSBOGetRecord = new SBOGetRecord();
             try
             {
-                listReceipt = listReceipt.Where(x => DateTime.Parse(x.date_created) < DateTime.Parse("06/01/2022")).ToList();
+                //listReceipt = listReceipt.Where(x => DateTime.Parse(x.date_created) < DateTime.Parse("06/01/2022")).ToList();
                 foreach (var iRowReceipt in listReceipt)
                 {
                     try
                     {
-                        //0 = no offset
-                        //1 = has both payment and offset
-                        //2 = only offset type
-
-                        if (iRowReceipt.payment_type == 0 || iRowReceipt.payment_type == 1)
+                        oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
+                        oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
+                        if (oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
                         {
-                            oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
-                            if (iRowReceipt.status == 1)
+                            oIncomingPayment.Remarks = "[Revert] - " + (iRowReceipt.remarks.Length >= 200 ? oCardName.Substring(0, 50) + " " + iRowReceipt.remarks : oCardName + " " + iRowReceipt.remarks);                        
+                            lErrCode = oIncomingPayment.Cancel();
+                            if (lErrCode == 0)
                             {
-                                oTransId = (String)clsSBOGetRecord.GetSingleValue("select \"U_TransId\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
-                                oIncomingPayment.DocObjectCode = BoPaymentsObjectType.bopot_IncomingPayments;
-                                if (oTransId == "" || oTransId == "0")
+                                try
                                 {
-                                    oCardCode = (String)clsSBOGetRecord.GetSingleValue("select \"CardCode\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
-                                    if (oCardCode != "")
-                                    {
-                                        oIncomingPayment.CardCode = oCardCode;
-
-                                        oCardName = (String)clsSBOGetRecord.GetSingleValue("select \"CardName\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
-                                    }
-                                    else
-                                    {
-                                        lastMessage = "Customer Code:" + iRowReceipt.student + " is not found in SAP B1";
-                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                        functionReturnValue = true;
-
-                                        goto isAddWithError;
-                                    }
-                                    var _invoiceIds = String.Join(",", iRowReceipt.invoice_id);
-                                    string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
-                                    string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
-
-                                    oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
-                                    oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
-                                    //oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
-                                    oIncomingPayment.DocDate = Convert.ToDateTime("07/03/2022");
-                                    //oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
-                                    //					? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
-                                    string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
-                                    oIncomingPayment.Series = int.Parse(seriesNum);
-                                    ////**** UDF ****\\\\     
-                                    oIncomingPayment.UserFields.Fields.Item("U_TransId").Value = iRowReceipt.id.ToString();
-                                    oIncomingPayment.UserFields.Fields.Item("U_StatusTaidii").Value = iRowReceipt.status.ToString();
-                                    oIncomingPayment.UserFields.Fields.Item("U_tax").Value = "N/A";
-                                    oIncomingPayment.UserFields.Fields.Item("U_ipc").Value = "NON-IPC";
-                                    //oIncomingPayment.UserFields.Fields.Item("U_Level").Value = iRowReceipt.level;
-                                    //oIncomingPayment.UserFields.Fields.Item("U_ProgramType").Value = iRowReceipt.program_type;
-                                    oIncomingPayment.UserFields.Fields.Item("U_ReceiptNo").Value = iRowReceipt.receipt_no;
-                                    oIncomingPayment.UserFields.Fields.Item("U_branch").Value = "Jamiyah Education Centre (JEC)";
-                                    ////**** UDF ****\\\\
-
-                                    if (iRowReceipt.status == 0)
-
-                                        if (iRowReceipt.remarks.Length >= 200)
-                                        {
-                                            oIncomingPayment.Remarks = oCardName.Substring(0, 50) + " " + iRowReceipt.remarks;
-                                        }
-                                        else
-                                            oIncomingPayment.Remarks = oCardName + " " + iRowReceipt.remarks;
-                                    else
-                                    {
-                                        if (iRowReceipt.void_remarks.Length >= 200)
-                                        {
-                                            oIncomingPayment.Remarks = oCardName.Substring(0, 50) + " " + iRowReceipt.void_remarks;
-                                        }
-                                        else
-                                            oIncomingPayment.Remarks = oCardName + " " + iRowReceipt.void_remarks;
-                                    }
-
-                                    ////**** Adding of List of Invoice to Incoming Payment ****\\\\
-                                    int invoiceCount = 0;
-                                    int invPaidCount;
-                                    foreach (var iRowReceiptInvDtl in iRowReceipt.invoice_id.ToList())
-                                    {
-                                        invoiceCount += 1;
-                                        oInvDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OINV\" " + Environment.NewLine +
-                                        "where \"U_TransId\" = '" + iRowReceiptInvDtl.ToString() + "' and \"CANCELED\" = 'N'", sapCompany);
-                                        if (oInvDocEntry != "" && oInvDocEntry != "0")
-                                        {
-                                            invPaidCount = 0;
-                                            foreach (var iRowReceiptInvPaidDtl in iRowReceipt.invoice_paid.ToList())
-                                            {
-                                                invPaidCount += 1;
-                                                if (invoiceCount == invPaidCount)
-                                                {
-                                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt32(oInvDocEntry);
-                                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_Invoice;
-                                                    oIncomingPayment.Invoices.SumApplied = Convert.ToDouble(iRowReceiptInvPaidDtl.ToString());
-                                                    oIncomingPayment.Invoices.Add();
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            lastMessage = "Invoice with Transaction id:" + iRowReceiptInvDtl.ToString() + " does not exist in SAP B1.";
-                                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                            functionReturnValue = true;
-
-                                            goto isAddWithError;
-                                        }
-                                    }
-                                    ////**** Adding of List of Invoice to Incoming Payment ****\\\\
-
-                                    ////**** Adding of List of Credit Note to Incoming Payment ****\\\\
-                                    iReference = string.Empty;
-                                    foreach (var iRowReceiptInvDtls in iRowReceipt.payment_methods.ToList())
-                                    {
-                                        if (iRowReceiptInvDtls.method == 3 || iRowReceiptInvDtls.method == 8 || iRowReceiptInvDtls.method == 10) //**OFFSET_DEPOSIT = 3**\\
-                                        {
-                                            if (!string.IsNullOrEmpty(iRowReceiptInvDtls.reference_id) && iRowReceiptInvDtls.reference_id != "N.A")
-                                            {
-                                                oCreditNoteDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORIN\" where \"U_TransId\" = '" + TrimData(iRowReceiptInvDtls.reference_id) + "' and \"CANCELED\" = 'N' and \"U_CreatedByVoucher\" = 0", sapCompany);
-                                                if (oCreditNoteDocEntry != "" && oCreditNoteDocEntry != "0")
-                                                {
-                                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt16(oCreditNoteDocEntry);
-                                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
-                                                    oIncomingPayment.Invoices.Add();
-                                                }
-                                                else
-                                                {
-                                                    string oDraftDocEntry = string.Empty;
-                                                    oDraftDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ODRF\" where \"U_TransId\" = '" + iRowReceiptInvDtls.reference_id + "' and \"CANCELED\" = 'N' and \"ObjType\" = 14", sapCompany);
-                                                    if (oDraftDocEntry != "" && oDraftDocEntry != "0")
-                                                    {
-                                                        SAPbobsCOM.Documents oDraft = (Documents)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oDrafts);
-                                                        if (oDraft.GetByKey(Convert.ToInt16(oDraftDocEntry)))
-                                                        {
-                                                            int ErrCode = oDraft.SaveDraftToDocument();
-                                                            if (ErrCode == 0)
-                                                            {
-                                                                oCreditNoteDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORIN\" where \"U_TransId\" = '" + iRowReceiptInvDtls.reference_id + "' and \"CANCELED\" = 'N' and \"U_CreatedByVoucher\" = 0", sapCompany);
-                                                                if (oCreditNoteDocEntry != "" && oCreditNoteDocEntry != "0")
-                                                                {
-                                                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt16(oCreditNoteDocEntry);
-                                                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
-                                                                    oIncomingPayment.Invoices.Add();
-                                                                }
-                                                            }
-                                                            else
-                                                            {
-                                                                lastMessage = sapCompany.GetLastErrorDescription();
-                                                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                                                functionReturnValue = true;
-
-                                                                goto isAddWithError;
-                                                            }
-                                                        }
-                                                    }
-                                                    else
-                                                    {
-                                                        lastMessage = "Credit Note with Reference Id:" + iRowReceiptInvDtls.reference_id + " does not exist in SAP B1 Drafts";
-                                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                                        functionReturnValue = true;
-
-                                                        goto isAddWithError;
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            {
-                                                if (iRowReceiptInvDtls.reference != "N.A")
-                                                    iReference += iRowReceiptInvDtls.reference + ", ";
-                                            }
-                                        }
-                                        else
-                                        {
-                                            if (iRowReceiptInvDtls.reference != "N.A")
-                                                iReference += iRowReceiptInvDtls.reference + ", ";
-                                        }
-                                    }
-                                    ////**** Adding of List of Credit Note to Incoming Payment ****\\\\
-
-                                    string oJournalRemarks = string.Empty;
-                                    if (!string.IsNullOrEmpty(iReference))
-                                    {
-                                        oJournalRemarks = iReference.Substring(0, iReference.Length - 2);
-                                    }
-
-                                    if (!string.IsNullOrEmpty(oJournalRemarks))
-                                        oIncomingPayment.JournalRemarks = oJournalRemarks;
-
-                                    ////**** Payment Means for the List of Invoices ****\\\\
-                                    foreach (var iRowReceiptDtls in iRowReceipt.payment_methods.ToList())
-                                    {
-                                        if (string.IsNullOrEmpty(iRowReceiptDtls.reference_id) || iRowReceiptDtls.reference_id == "N.A")
-                                        {
-                                            oAcctCode = (String)clsSBOGetRecord.GetSingleValue("select \"U_GLAccount\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
-
-                                            oModeOfPayment = (String)clsSBOGetRecord.GetSingleValue("select \"U_ModePayment\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
-
-                                            oIncomingPayment.UserFields.Fields.Item("U_type").Value = "Local";
-                                            oIncomingPayment.UserFields.Fields.Item("U_giro").Value = "N/A";
-
-                                            if (oModeOfPayment == "Cash" || oModeOfPayment == "NETS")
-                                            {
-                                                if (!string.IsNullOrEmpty(oAcctCode))
-                                                {
-                                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = oModeOfPayment;
-                                                    oIncomingPayment.CashAccount = oAcctCode;
-                                                }
-                                                if (iRowReceiptDtls.amount != 0)
-                                                    oIncomingPayment.CashSum = iRowReceiptDtls.amount;
-                                            }
-                                            else if (oModeOfPayment == "Check")
-                                            {
-                                                if (!string.IsNullOrEmpty(oAcctCode))
-                                                {
-                                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = "CHQ";
-                                                    oIncomingPayment.CheckAccount = oAcctCode;
-                                                }
-                                                if (iRowReceiptDtls.amount != 0)
-                                                    oIncomingPayment.Checks.CheckSum = iRowReceiptDtls.amount;
-
-                                                oIncomingPayment.Checks.Add();
-                                            }
-                                            else if (oModeOfPayment == "Bank Transfer" || oModeOfPayment == "GIRO" || oModeOfPayment == "Paynow")
-                                            {
-                                                oIncomingPayment.TransferReference = iRowReceiptDtls.reference;
-
-                                                if (!string.IsNullOrEmpty(oAcctCode))
-                                                    oIncomingPayment.TransferAccount = oAcctCode;
-
-                                                if (oModeOfPayment == "GIRO" || oModeOfPayment == "Paynow")
-                                                {
-                                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = "GIRO";
-                                                    oIncomingPayment.UserFields.Fields.Item("U_giro").Value = "Yes";
-                                                }
-
-                                                if (iRowReceiptDtls.amount != 0)
-                                                    oIncomingPayment.TransferSum = iRowReceiptDtls.amount;
-
-                                            }
-                                            else if (oModeOfPayment == "CC")
-                                            {
-                                                //string creditCardName = cls.GetSingleValue("SELECT \"CreditCard\" FROM OCRC WHERE \"CardName\" = '" + oIncomingPaymentLines.creditCardName + "'", company);
-                                                //if (creditCardName != "")
-                                                //{
-                                                //    oIncomingPayment.CreditCards.CreditCard = Convert.ToInt16(creditCardName);
-                                                //    oIncomingPayment.CreditCards.CardValidUntil = Convert.ToDateTime(oIncomingPaymentLines.creditCardValidDate);
-                                                //    oIncomingPayment.CreditCards.CreditCardNumber = oIncomingPaymentLines.creditCardNumber;
-
-                                                //    if (oIncomingPaymentLines.creditCardAmount != 0)
-                                                //        oIncomingPayment.CreditCards.CreditSum = oIncomingPaymentLines.creditCardAmount;
-
-                                                //    oIncomingPayment.CreditCards.VoucherNum = oIncomingPaymentLines.creditCardApproval;
-                                                //    oIncomingPayment.CreditCards.Add();
-                                                //}
-                                            }
-                                            else if (oModeOfPayment == "CN")
-                                            {
-                                                string oDocDate = string.Empty;
-                                                string CNDesc = string.Empty;
-                                                if (!string.IsNullOrEmpty(iRowReceiptDtls.reference_id))
-                                                { }
-                                                else
-                                                {
-                                                    string oVoucherTaxCode = (String)clsSBOGetRecord.GetSingleValue("select \"U_TaxCode\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
-
-                                                    oCardName = (String)clsSBOGetRecord.GetSingleValue("select \"CardName\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
-
-                                                    CNDesc = oCardName + " Voucher " + Convert.ToDateTime(iRowReceipt.date_created).ToString("MMM") + " " + Convert.ToDateTime(iRowReceipt.date_created).Year + " " + iRowReceipt.level + " " + iRowReceipt.program_type;
-
-                                                    Int16 CNDocEntry = CreateCreditNoteVoucher(oCardCode, iRowReceipt.receipt_no, iRowReceipt.date_created, CNDesc, oAcctCode, iRowReceiptDtls.amount, oVoucherTaxCode, iRowReceipt.invoice_no[0].ToString());
-                                                    if (CNDocEntry != 0)
-                                                    {
-                                                        oIncomingPayment.Invoices.DocEntry = CNDocEntry;
-                                                        oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
-                                                        oIncomingPayment.Invoices.Add();
-                                                    }
-                                                    else
-                                                    {
-                                                        lastMessage = "Credit Note (Voucher) with Transaction id:" + iRowReceipt.id + " and Receipt No:" + iRowReceipt.receipt_no + " does not exist in SAP B1.";
-                                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                                        functionReturnValue = true;
-
-                                                        goto isAddWithError;
-                                                    }
-                                                }
-                                            }
-                                            else if (oModeOfPayment == "NA")
-                                            { }
-                                            else
-                                            { }
-                                        }
-                                    }
-                                    ////**** Payment Means for the List of Invoices and Credit Note ****\\\\
-
-                                    lErrCode = oIncomingPayment.Add();
-                                    if (lErrCode == 0)
-                                    {
-                                        try
-                                        {
-                                            oDocEntry = sapCompany.GetNewObjectKey();
-                                            lastMessage = "Successfully created Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
-                                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 140 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                            functionReturnValue = false;
-                                        }
-                                        catch
-                                        { }
-
-                                        //try
-                                        //{
-                                        //	if (iRowReceipt.status == 1 && oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
-                                        //	{
-                                        //		lErrCode = oIncomingPayment.Cancel();
-                                        //		if (lErrCode == 0)
-                                        //		{
-                                        //			try
-                                        //			{
-                                        //				lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
-                                        //				sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                        //				functionReturnValue = false;
-                                        //			}
-                                        //			catch (Exception ex)
-                                        //			{ }
-                                        //		}
-                                        //		else
-                                        //		{
-                                        //			lastMessage = sapCompany.GetLastErrorDescription();
-                                        //			sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                        //			functionReturnValue = true;
-                                        //		}
-                                        //		System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
-                                        //	}
-                                        //}
-                                        //catch (Exception ex) 
-                                        //{ }
-                                    }
-                                    else
-                                    {
-                                        lastMessage = sapCompany.GetLastErrorDescription();
-                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-
-                                        functionReturnValue = true;
-
-                                        goto isAddWithError;
-                                    }
-
-                                isAddWithError:;
-
-                                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
-
-                                }
-                                else
-                                {
-                                    oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OPDF\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"ObjType\" = 24", sapCompany);
-
-                                    lastMessage = "Incoming Payment with Transaction Id:" + iRowReceipt.id + " is already existing in SAP B1.";
-                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 24 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                                    lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
 
                                     functionReturnValue = false;
                                 }
+                                catch (Exception ex)
+                                { }
                             }
+                            else
+                            {
+                                lastMessage = sapCompany.GetLastErrorDescription();
+                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                                functionReturnValue = true;
+                            }
+                            System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
                         }
                     }
                     catch (Exception ex)
-                    {
-                        lastMessage = ex.ToString();
-                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
-                        functionReturnValue = false;
-                    }
+                    { }
                 }
+                return Convert.ToInt16(functionReturnValue);
+                #region Old Code for Create Void Receipt
+                //foreach (var iRowReceipt in listReceipt)
+                //{
+                //    try
+                //    {
+                //        //0 = no offset
+                //        //1 = has both payment and offset
+                //        //2 = only offset type
+
+                //        if (iRowReceipt.payment_type == 0 || iRowReceipt.payment_type == 1)
+                //        {
+                //            oIncomingPayment = (Payments)sapCompany.GetBusinessObject(BoObjectTypes.oIncomingPayments);
+                //            if (iRowReceipt.status == 1)
+                //            {
+                //                oTransId = (String)clsSBOGetRecord.GetSingleValue("select \"U_TransId\" from \"ORCT\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"Canceled\" = 'N'", sapCompany);
+                //                oIncomingPayment.DocObjectCode = BoPaymentsObjectType.bopot_IncomingPayments;
+                //                if (oTransId == "" || oTransId == "0")
+                //                {
+                //                    oCardCode = (String)clsSBOGetRecord.GetSingleValue("select \"CardCode\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
+                //                    if (oCardCode != "")
+                //                    {
+                //                        oIncomingPayment.CardCode = oCardCode;
+
+                //                        oCardName = (String)clsSBOGetRecord.GetSingleValue("select \"CardName\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
+                //                    }
+                //                    else
+                //                    {
+                //                        lastMessage = "Customer Code:" + iRowReceipt.student + " is not found in SAP B1";
+                //                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                        functionReturnValue = true;
+
+                //                        goto isAddWithError;
+                //                    }
+                //                    var _invoiceIds = String.Join(",", iRowReceipt.invoice_id);
+                //                    string _earliestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate ASC", sapCompany);
+                //                    string _latestInvDate = (String)clsSBOGetRecord.GetSingleValue("SELECT TOP 1 DocDate FROM OINV WHERE \"U_TransId\" IN ('" + _invoiceIds + "') ORDER BY DocDate DESC", sapCompany);
+
+                //                    oIncomingPayment.BPLID = 5; //"Jamiyah Education Centre (JEC)";
+                //                    oIncomingPayment.DocTypte = BoRcptTypes.rCustomer;
+                //                    //oIncomingPayment.DocDate = Convert.ToDateTime(iRowReceipt.date_created);
+                //                    oIncomingPayment.DocDate = Convert.ToDateTime("07/03/2022");
+                //                    //oIncomingPayment.DocDate = (!String.IsNullOrEmpty(_earliestInvDate) && Convert.ToDateTime(_earliestInvDate) > Convert.ToDateTime(iRowReceipt.date_created)
+                //                    //					? Convert.ToDateTime(_earliestInvDate) : Convert.ToDateTime(iRowReceipt.date_created));
+                //                    string seriesNum = (String)clsSBOGetRecord.GetSingleValue("select TOP 1 Series from \"NNM1\" \"e\"  where \"e\".SeriesName like '%JEC%' AND BPLId = 5 AND Indicator = YEAR(GETDATE()) AND ObjectCode = '24'", sapCompany);
+                //                    oIncomingPayment.Series = int.Parse(seriesNum);
+                //                    ////**** UDF ****\\\\     
+                //                    oIncomingPayment.UserFields.Fields.Item("U_TransId").Value = iRowReceipt.id.ToString();
+                //                    oIncomingPayment.UserFields.Fields.Item("U_StatusTaidii").Value = iRowReceipt.status.ToString();
+                //                    oIncomingPayment.UserFields.Fields.Item("U_tax").Value = "N/A";
+                //                    oIncomingPayment.UserFields.Fields.Item("U_ipc").Value = "NON-IPC";
+                //                    //oIncomingPayment.UserFields.Fields.Item("U_Level").Value = iRowReceipt.level;
+                //                    //oIncomingPayment.UserFields.Fields.Item("U_ProgramType").Value = iRowReceipt.program_type;
+                //                    oIncomingPayment.UserFields.Fields.Item("U_ReceiptNo").Value = iRowReceipt.receipt_no;
+                //                    oIncomingPayment.UserFields.Fields.Item("U_branch").Value = "Jamiyah Education Centre (JEC)";
+                //                    ////**** UDF ****\\\\
+
+                //                    if (iRowReceipt.status == 0)
+
+                //                        if (iRowReceipt.remarks.Length >= 200)
+                //                        {
+                //                            oIncomingPayment.Remarks = oCardName.Substring(0, 50) + " " + iRowReceipt.remarks;
+                //                        }
+                //                        else
+                //                            oIncomingPayment.Remarks = oCardName + " " + iRowReceipt.remarks;
+                //                    else
+                //                    {
+                //                        if (iRowReceipt.void_remarks.Length >= 200)
+                //                        {
+                //                            oIncomingPayment.Remarks = "[REVERT] - " + oCardName.Substring(0, 50) + " " + iRowReceipt.void_remarks;
+                //                        }
+                //                        else
+                //                            oIncomingPayment.Remarks = "[REVERT] - " + oCardName + " " + iRowReceipt.void_remarks;
+                //                    }
+
+                //                    ////**** Adding of List of Invoice to Incoming Payment ****\\\\
+                //                    int invoiceCount = 0;
+                //                    int invPaidCount;
+                //                    foreach (var iRowReceiptInvDtl in iRowReceipt.invoice_id.ToList())
+                //                    {
+                //                        invoiceCount += 1;
+                //                        oInvDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OINV\" " + Environment.NewLine +
+                //                        "where \"U_TransId\" = '" + iRowReceiptInvDtl.ToString() + "' and \"CANCELED\" = 'N'", sapCompany);
+                //                        if (oInvDocEntry != "" && oInvDocEntry != "0")
+                //                        {
+                //                            invPaidCount = 0;
+                //                            foreach (var iRowReceiptInvPaidDtl in iRowReceipt.invoice_paid.ToList())
+                //                            {
+                //                                invPaidCount += 1;
+                //                                if (invoiceCount == invPaidCount)
+                //                                {
+                //                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt32(oInvDocEntry);
+                //                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_Invoice;
+                //                                    oIncomingPayment.Invoices.SumApplied = Convert.ToDouble(iRowReceiptInvPaidDtl.ToString());
+                //                                    oIncomingPayment.Invoices.Add();
+                //                                }
+                //                            }
+                //                        }
+                //                        else
+                //                        {
+                //                            lastMessage = "Invoice with Transaction id:" + iRowReceiptInvDtl.ToString() + " does not exist in SAP B1.";
+                //                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                            functionReturnValue = true;
+
+                //                            goto isAddWithError;
+                //                        }
+                //                    }
+                //                    ////**** Adding of List of Invoice to Incoming Payment ****\\\\
+
+                //                    ////**** Adding of List of Credit Note to Incoming Payment ****\\\\
+                //                    iReference = string.Empty;
+                //                    foreach (var iRowReceiptInvDtls in iRowReceipt.payment_methods.ToList())
+                //                    {
+                //                        if (iRowReceiptInvDtls.method == 3 || iRowReceiptInvDtls.method == 8 || iRowReceiptInvDtls.method == 10) //**OFFSET_DEPOSIT = 3**\\
+                //                        {
+                //                            if (!string.IsNullOrEmpty(iRowReceiptInvDtls.reference_id) && iRowReceiptInvDtls.reference_id != "N.A")
+                //                            {
+                //                                oCreditNoteDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORIN\" where \"U_TransId\" = '" + TrimData(iRowReceiptInvDtls.reference_id) + "' and \"CANCELED\" = 'N' and \"U_CreatedByVoucher\" = 0", sapCompany);
+                //                                if (oCreditNoteDocEntry != "" && oCreditNoteDocEntry != "0")
+                //                                {
+                //                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt16(oCreditNoteDocEntry);
+                //                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
+                //                                    oIncomingPayment.Invoices.Add();
+                //                                }
+                //                                else
+                //                                {
+                //                                    string oDraftDocEntry = string.Empty;
+                //                                    oDraftDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ODRF\" where \"U_TransId\" = '" + iRowReceiptInvDtls.reference_id + "' and \"CANCELED\" = 'N' and \"ObjType\" = 14", sapCompany);
+                //                                    if (oDraftDocEntry != "" && oDraftDocEntry != "0")
+                //                                    {
+                //                                        SAPbobsCOM.Documents oDraft = (Documents)sapCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oDrafts);
+                //                                        if (oDraft.GetByKey(Convert.ToInt16(oDraftDocEntry)))
+                //                                        {
+                //                                            int ErrCode = oDraft.SaveDraftToDocument();
+                //                                            if (ErrCode == 0)
+                //                                            {
+                //                                                oCreditNoteDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"ORIN\" where \"U_TransId\" = '" + iRowReceiptInvDtls.reference_id + "' and \"CANCELED\" = 'N' and \"U_CreatedByVoucher\" = 0", sapCompany);
+                //                                                if (oCreditNoteDocEntry != "" && oCreditNoteDocEntry != "0")
+                //                                                {
+                //                                                    oIncomingPayment.Invoices.DocEntry = Convert.ToInt16(oCreditNoteDocEntry);
+                //                                                    oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
+                //                                                    oIncomingPayment.Invoices.Add();
+                //                                                }
+                //                                            }
+                //                                            else
+                //                                            {
+                //                                                lastMessage = sapCompany.GetLastErrorDescription();
+                //                                                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                                                functionReturnValue = true;
+
+                //                                                goto isAddWithError;
+                //                                            }
+                //                                        }
+                //                                    }
+                //                                    else
+                //                                    {
+                //                                        lastMessage = "Credit Note with Reference Id:" + iRowReceiptInvDtls.reference_id + " does not exist in SAP B1 Drafts";
+                //                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                                        functionReturnValue = true;
+
+                //                                        goto isAddWithError;
+                //                                    }
+                //                                }
+                //                            }
+                //                            else
+                //                            {
+                //                                if (iRowReceiptInvDtls.reference != "N.A")
+                //                                    iReference += iRowReceiptInvDtls.reference + ", ";
+                //                            }
+                //                        }
+                //                        else
+                //                        {
+                //                            if (iRowReceiptInvDtls.reference != "N.A")
+                //                                iReference += iRowReceiptInvDtls.reference + ", ";
+                //                        }
+                //                    }
+                //                    ////**** Adding of List of Credit Note to Incoming Payment ****\\\\
+
+                //                    string oJournalRemarks = string.Empty;
+                //                    if (!string.IsNullOrEmpty(iReference))
+                //                    {
+                //                        oJournalRemarks = iReference.Substring(0, iReference.Length - 2);
+                //                    }
+
+                //                    if (!string.IsNullOrEmpty(oJournalRemarks))
+                //                        oIncomingPayment.JournalRemarks = oJournalRemarks;
+
+                //                    ////**** Payment Means for the List of Invoices ****\\\\
+                //                    foreach (var iRowReceiptDtls in iRowReceipt.payment_methods.ToList())
+                //                    {
+                //                        if (string.IsNullOrEmpty(iRowReceiptDtls.reference_id) || iRowReceiptDtls.reference_id == "N.A")
+                //                        {
+                //                            oAcctCode = (String)clsSBOGetRecord.GetSingleValue("select \"U_GLAccount\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
+
+                //                            oModeOfPayment = (String)clsSBOGetRecord.GetSingleValue("select \"U_ModePayment\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
+
+                //                            oIncomingPayment.UserFields.Fields.Item("U_type").Value = "Local";
+                //                            oIncomingPayment.UserFields.Fields.Item("U_giro").Value = "N/A";
+
+                //                            if (oModeOfPayment == "Cash" || oModeOfPayment == "NETS")
+                //                            {
+                //                                if (!string.IsNullOrEmpty(oAcctCode))
+                //                                {
+                //                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = oModeOfPayment;
+                //                                    oIncomingPayment.CashAccount = oAcctCode;
+                //                                }
+                //                                if (iRowReceiptDtls.amount != 0)
+                //                                    oIncomingPayment.CashSum = iRowReceiptDtls.amount;
+                //                            }
+                //                            else if (oModeOfPayment == "Check")
+                //                            {
+                //                                if (!string.IsNullOrEmpty(oAcctCode))
+                //                                {
+                //                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = "CHQ";
+                //                                    oIncomingPayment.CheckAccount = oAcctCode;
+                //                                }
+                //                                if (iRowReceiptDtls.amount != 0)
+                //                                    oIncomingPayment.Checks.CheckSum = iRowReceiptDtls.amount;
+
+                //                                oIncomingPayment.Checks.Add();
+                //                            }
+                //                            else if (oModeOfPayment == "Bank Transfer" || oModeOfPayment == "GIRO" || oModeOfPayment == "Paynow")
+                //                            {
+                //                                oIncomingPayment.TransferReference = iRowReceiptDtls.reference;
+
+                //                                if (!string.IsNullOrEmpty(oAcctCode))
+                //                                    oIncomingPayment.TransferAccount = oAcctCode;
+
+                //                                if (oModeOfPayment == "GIRO" || oModeOfPayment == "Paynow")
+                //                                {
+                //                                    oIncomingPayment.UserFields.Fields.Item("U_cash").Value = "GIRO";
+                //                                    oIncomingPayment.UserFields.Fields.Item("U_giro").Value = "Yes";
+                //                                }
+
+                //                                if (iRowReceiptDtls.amount != 0)
+                //                                    oIncomingPayment.TransferSum = iRowReceiptDtls.amount;
+
+                //                            }
+                //                            else if (oModeOfPayment == "CC")
+                //                            {
+                //                                //string creditCardName = cls.GetSingleValue("SELECT \"CreditCard\" FROM OCRC WHERE \"CardName\" = '" + oIncomingPaymentLines.creditCardName + "'", company);
+                //                                //if (creditCardName != "")
+                //                                //{
+                //                                //    oIncomingPayment.CreditCards.CreditCard = Convert.ToInt16(creditCardName);
+                //                                //    oIncomingPayment.CreditCards.CardValidUntil = Convert.ToDateTime(oIncomingPaymentLines.creditCardValidDate);
+                //                                //    oIncomingPayment.CreditCards.CreditCardNumber = oIncomingPaymentLines.creditCardNumber;
+
+                //                                //    if (oIncomingPaymentLines.creditCardAmount != 0)
+                //                                //        oIncomingPayment.CreditCards.CreditSum = oIncomingPaymentLines.creditCardAmount;
+
+                //                                //    oIncomingPayment.CreditCards.VoucherNum = oIncomingPaymentLines.creditCardApproval;
+                //                                //    oIncomingPayment.CreditCards.Add();
+                //                                //}
+                //                            }
+                //                            else if (oModeOfPayment == "CN")
+                //                            {
+                //                                string oDocDate = string.Empty;
+                //                                string CNDesc = string.Empty;
+                //                                if (!string.IsNullOrEmpty(iRowReceiptDtls.reference_id))
+                //                                { }
+                //                                else
+                //                                {
+                //                                    string oVoucherTaxCode = (String)clsSBOGetRecord.GetSingleValue("select \"U_TaxCode\" from \"@PAYMENTCODES\" where \"U_PaymentCodeMethod\" = " + iRowReceiptDtls.method + "", sapCompany);
+
+                //                                    oCardName = (String)clsSBOGetRecord.GetSingleValue("select \"CardName\" from \"OCRD\" where \"CardCode\" = '" + TrimData(iRowReceipt.student) + "'", sapCompany);
+
+                //                                    CNDesc = oCardName + " Voucher " + Convert.ToDateTime(iRowReceipt.date_created).ToString("MMM") + " " + Convert.ToDateTime(iRowReceipt.date_created).Year + " " + iRowReceipt.level + " " + iRowReceipt.program_type;
+
+                //                                    Int16 CNDocEntry = CreateCreditNoteVoucher(oCardCode, iRowReceipt.receipt_no, iRowReceipt.date_created, CNDesc, oAcctCode, iRowReceiptDtls.amount, oVoucherTaxCode, iRowReceipt.invoice_no[0].ToString());
+                //                                    if (CNDocEntry != 0)
+                //                                    {
+                //                                        oIncomingPayment.Invoices.DocEntry = CNDocEntry;
+                //                                        oIncomingPayment.Invoices.InvoiceType = BoRcptInvTypes.it_CredItnote;
+                //                                        oIncomingPayment.Invoices.Add();
+                //                                    }
+                //                                    else
+                //                                    {
+                //                                        lastMessage = "Credit Note (Voucher) with Transaction id:" + iRowReceipt.id + " and Receipt No:" + iRowReceipt.receipt_no + " does not exist in SAP B1.";
+                //                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                                        functionReturnValue = true;
+
+                //                                        goto isAddWithError;
+                //                                    }
+                //                                }
+                //                            }
+                //                            else if (oModeOfPayment == "NA")
+                //                            { }
+                //                            else
+                //                            { }
+                //                        }
+                //                    }
+                //                    ////**** Payment Means for the List of Invoices and Credit Note ****\\\\
+
+                //                    lErrCode = oIncomingPayment.Add();
+                //                    if (lErrCode == 0)
+                //                    {
+                //                        try
+                //                        {
+                //                            oDocEntry = sapCompany.GetNewObjectKey();
+                //                            lastMessage = "Successfully created Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                //                            sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 140 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                            functionReturnValue = false;
+                //                        }
+                //                        catch
+                //                        { }
+
+                //                        try
+                //                        {
+                //                            if (iRowReceipt.status == 1 && oIncomingPayment.GetByKey(Convert.ToInt32(oDocEntry)) == true)
+                //                            {
+                //                                lErrCode = oIncomingPayment.Cancel();
+                //                                if (lErrCode == 0)
+                //                                {
+                //                                    try
+                //                                    {
+                //                                        lastMessage = "Successfully canceled Incoming Payment with Transaction Id:" + iRowReceipt.id + " in SAP B1.";
+                //                                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                                        functionReturnValue = false;
+                //                                    }
+                //                                    catch (Exception ex)
+                //                                    { }
+                //                                }
+                //                                else
+                //                                {
+                //                                    lastMessage = sapCompany.GetLastErrorDescription();
+                //                                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                                    functionReturnValue = true;
+                //                                }
+                //                                System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
+                //                            }
+                //                        }
+                //                        catch (Exception ex)
+                //                        { }
+                //                    }
+                //                    else
+                //                    {
+                //                        lastMessage = sapCompany.GetLastErrorDescription();
+                //                        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                        functionReturnValue = true;
+
+                //                        goto isAddWithError;
+                //                    }
+
+                //                isAddWithError:;
+
+                //                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oIncomingPayment);
+
+                //                }
+                //                else
+                //                {
+                //                    oDocEntry = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OPDF\" where \"U_TransId\" = '" + iRowReceipt.id + "' and \"ObjType\" = 24", sapCompany);
+
+                //                    lastMessage = "Incoming Payment with Transaction Id:" + iRowReceipt.id + " is already existing in SAP B1.";
+                //                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 24 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+
+                //                    functionReturnValue = false;
+                //                }
+                //            }
+                //        }
+                //    }
+                //    catch (Exception ex)
+                //    {
+                //        lastMessage = ex.ToString();
+                //        sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = '" + iif(iRowReceipt.status == 0, "Draft", "Void") + "',\"statusCode\" = 'For Process',\"failDesc\" = '" + TrimData(lastMessage) + "',\"successDesc\" = '',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "' where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + iRowReceipt.id + "'");
+                //        functionReturnValue = false;
+                //    }
+                //}
+                #endregion
             }
             catch (Exception ex)
             {
@@ -2691,6 +3130,24 @@ namespace Jamiyah_Web_Integration.SAPServices
             }
 
             return Convert.ToInt16(functionReturnValue);
+        }
+
+        public bool CancelInvoiceForDP(int newInvDocEntry, int oldInvDocEntry)
+        {
+            sapRecSet.DoQuery($"Update {SBOConstantClass.Database}..OINV SET U_NewDocEntry={newInvDocEntry} WHERE DocEntry={oldInvDocEntry}");
+
+            SAPbobsCOM.Documents _invDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
+            _invDoc.GetByKey(oldInvDocEntry);       
+            var CancelInvoice = _invDoc.CreateCancellationDocument();
+            CancelInvoice.Comments = $"[REVERT] - This invoice has linked with downpayment.";            
+            int ErrCode = CancelInvoice.Add();
+            if (ErrCode == 0)
+            {
+                lastMessage = "Successfully updated the invoice with Transaction Id:" + oldInvDocEntry + " in SAP B1.";
+                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oldInvDocEntry + "',\"objType\" = 14 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + oldInvDocEntry + "'");
+                return true;
+            }
+            return false;           
         }
 
         public string ItemMasterData(string oDate = "")

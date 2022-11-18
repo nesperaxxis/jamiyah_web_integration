@@ -55,6 +55,9 @@ namespace Jamiyah_Web_Integration.SAPModels
         public string student { get; set; }
         public string level { get; set; }
         public string program_type { get; set; }
+        public float? downPaymentAmount{ get; set; }
+        public int? downPaymentDocEntry { get; set; }
+        public int? oldInvDocEntry { get; set; }
         public virtual List<API_InvoiceDetails> items { get; set; }
     }
     
