@@ -555,10 +555,26 @@ namespace Jamiyah_Web_Integration.SAPServices
                 if (SBOconnectToLoginCompany(SBOConstantClass.SBOServer, SBOConstantClass.Database, SBOConstantClass.ServerUN, SBOConstantClass.ServerPW, SBOConstantClass.SAPUser, SBOConstantClass.SAPPassword))
                 {
                     GetIntegrationSetup();
+                    lstdp = lstdp.Where(x => x.status == 1).ToList();
+
+
+                    lstdp = lstdp.Where(x => x.credit_no == "ADV-000069").ToList();
+
                     foreach (var iRowCreditNote in lstdp)
                     {
                         try
                         {
+                            if (iRowCreditNote.credit_type != 2)
+                            {
+                                continue;
+                            }
+                            string _checkIfExists = "select \"U_TransId\" from \"ODPI\" where \"U_TransId\" = '" + iRowCreditNote.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowCreditNote.credit_no + "'";
+                            oTransId = (String)clsSBOGetRecord.GetSingleValue(_checkIfExists, sapCompany);
+                            if (oTransId != "" && oTransId != "0")
+                            {
+                                continue;
+                            }
+
                             oId = iRowCreditNote.id;
                             oStatus = iRowCreditNote.status;
 
@@ -911,10 +927,11 @@ namespace Jamiyah_Web_Integration.SAPServices
                     {
                         string _checkIfExists = "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + iRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowInv.invoice_no + "'";
                         oTransId = (String)clsSBOGetRecord.GetSingleValue(_checkIfExists, sapCompany);
-                        if (oTransId != "" && oTransId != "0" && !iRowInv.downPaymentAmount.HasValue && !iRowInv.downPaymentDocEntry.HasValue)
+                        //if (oTransId != "" && oTransId != "0" && !iRowInv.downPaymentAmount.HasValue && !iRowInv.downPaymentDocEntry.HasValue)
+                        if ((oTransId != "" && oTransId != "0" && !iRowInv.isAppliedDP.HasValue) || (iRowInv.isAppliedDP.HasValue && iRowInv.isAppliedDP.Value == true && iRowInv.OpenDPs?.Count < 1))
                         {
                             continue;
-                        }
+                        }                       
 
                         bool hasItemCode = true;
                         try
@@ -1012,7 +1029,7 @@ namespace Jamiyah_Web_Integration.SAPServices
                                 "union all " + Environment.NewLine +
                                 "select \"U_TransId\" from \"OINV\" where \"U_TransId\" = '" + iRowInv.id + "' and \"CANCELED\" = 'N' and \"NumAtCard\" = '" + iRowInv.invoice_no + "'";
                                 oTransId = (String)clsSBOGetRecord.GetSingleValue(Query, sapCompany);
-                                if (oTransId == "" || oTransId == "0" || (iRowInv.downPaymentDocEntry.HasValue && iRowInv.downPaymentAmount.HasValue))
+                                if (oTransId == "" || oTransId == "0" || (iRowInv.isAppliedDP.HasValue && iRowInv.isAppliedDP.Value == true && iRowInv.OpenDPs.Count > 0))
                                 {
                                     oInvoice = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
                                     oInvoice.DocObjectCode = BoObjectTypes.oInvoices;
@@ -1194,21 +1211,46 @@ namespace Jamiyah_Web_Integration.SAPServices
 
                                     oInvoice.DocType = BoDocumentTypes.dDocument_Items;
 
-                                    if (iRowInv.downPaymentAmount.HasValue && iRowInv.downPaymentDocEntry.HasValue)
+                                    if (iRowInv.OpenDPs?.Count > 0)
                                     {
-                                        var dpDraw = oInvoice.DownPaymentsToDraw;
-                                        var dpAmount = double.Parse(iRowInv.downPaymentAmount.ToString());
-                                        var docTotal = iRowInv.items.Sum(x => x.unit_price);
-                                        if (dpAmount > docTotal)
+
+                                        CancelInvoiceForDP(0, iRowInv.oldInvDocEntry.Value);
+
+                                        var docTotal = (double)iRowInv.items.Sum(x => x.unit_price);
+                                        double appliedAmt = 0;
+                                        int i = 0;
+                                        while (appliedAmt < docTotal && iRowInv.OpenDPs?.Count > i)
                                         {
-                                            dpDraw.AmountToDraw = docTotal;
+                                            var dpDraw = oInvoice.DownPaymentsToDraw;
+                                            var dpAmount = double.Parse(iRowInv.OpenDPs[i].Ammount.ToString());
+
+                                            if (dpAmount > docTotal)
+                                            {
+                                                dpDraw.AmountToDraw = docTotal;
+                                            }
+                                            else
+                                            {
+                                                dpDraw.AmountToDraw = dpAmount;
+                                            }
+                                            dpDraw.DocEntry = int.Parse(iRowInv.OpenDPs[i].DocEntry);
+                                            dpDraw.Add();
+                                            appliedAmt = appliedAmt + dpAmount;
+                                            docTotal = docTotal - dpAmount;
+                                            i++;
                                         }
-                                        else
-                                        {
-                                            dpDraw.AmountToDraw = dpAmount;
-                                        }
+                                        //var dpDraw = oInvoice.DownPaymentsToDraw;
+                                        //var dpAmount = double.Parse(iRowInv.downPaymentAmount.ToString());
+                                        //var docTotal = iRowInv.items.Sum(x => x.unit_price);
+                                        //if (dpAmount > docTotal)
+                                        //{
+                                        //    dpDraw.AmountToDraw = docTotal;
+                                        //}
+                                        //else
+                                        //{
+                                        //    dpDraw.AmountToDraw = dpAmount;
+                                        //}
                                        
-                                        dpDraw.DocEntry = iRowInv.downPaymentDocEntry.Value;
+                                        //dpDraw.DocEntry = iRowInv.downPaymentDocEntry.Value;
                                     }                                    
 
                                     lErrCode = oInvoice.Add();
@@ -1220,9 +1262,9 @@ namespace Jamiyah_Web_Integration.SAPServices
                                             lastMessage = "Successfully created Invoice (Draft) with Transaction Id:" + iRowInv.id + " in SAP B1.";
                                             sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Draft',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oDocEntry + "',\"objType\" = 112 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Invoice' and \"uniqueId\" = '" + iRowInv.id + "'");
 
-                                            if (iRowInv.downPaymentDocEntry.HasValue)
+                                            if (iRowInv.OpenDPs?.Count > 0)
                                             {
-                                                CancelInvoiceForDP(int.Parse(oDocEntry), iRowInv.oldInvDocEntry.Value);
+                                                UpdateCancelledInvoiceForDP(int.Parse(oDocEntry), iRowInv.oldInvDocEntry.Value);
                                             }                                          
 
                                             functionReturnValue = false;
@@ -1318,7 +1360,9 @@ namespace Jamiyah_Web_Integration.SAPServices
                     //listReceipt = listReceipt.Where(x => receiptNums.Contains(x.receipt_no)).ToList();
 
                     var newReceipt = listReceipt.Where(x => x.status == 0).ToList();
-             
+
+                    //newReceipt = newReceipt.Where(x => x.receipt_no == "RCP-003554").ToList();
+
                     foreach (var iRowReceipt in newReceipt)
                     {
                         try
@@ -1809,16 +1853,28 @@ namespace Jamiyah_Web_Integration.SAPServices
                                         continue; 
                                     }
 
+                                    //if (iRowReceiptOffSetDtls.ToString() != "225948" && iRowReceiptOffSetDtls.ToString() != "222444")
+                                    //{
+                                    //    continue;
+                                    //}
+
+                                    var openDPs = clsSBOGetRecord.OpenDPEntries(iRowReceipt.student, sapCompany);
+                                    if (openDPs.Count < 1)
+                                    {
+                                        continue;
+                                    }
+
                                     string DpmAppl = (String)clsSBOGetRecord.GetSingleValue("select CAST(DpmAppl as nvarchar(max)) [DpmAppl] from \"ODPI\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 203", sapCompany);
                                     string DpmAmnt = (String)clsSBOGetRecord.GetSingleValue("select CAST(DpmAmnt as nvarchar(max)) [DpmAmnt] from \"ODPI\" where \"U_TransId\" = '" + iRowReceiptOffSetDtls.ToString() + "' and \"CANCELED\" = 'N' and \"ObjType\" = 203", sapCompany);
 
                                     var remainingDPAmount = (Double.Parse(DpmAmnt) - Double.Parse(DpmAppl));
-                                    if (remainingDPAmount <= 0) continue;
+                                    if (remainingDPAmount <= 0) 
+                                        continue;
 
                                     foreach (var offsetInvoiceNo in iRowReceipt.invoice_id.ToList())
                                     {
-                                        SAPbobsCOM.Documents _dpDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oDownPayments);
-                                        _dpDoc.GetByKey(int.Parse(oDocEntryODPI));
+                                        //SAPbobsCOM.Documents _dpDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oDownPayments);
+                                        //_dpDoc.GetByKey(int.Parse(oDocEntryODPI));
 
                                         string oDocEntryOINV = (String)clsSBOGetRecord.GetSingleValue("select \"DocEntry\" from \"OINV\" where \"U_TransId\" = '" + offsetInvoiceNo.ToString() + "' and \"DocStatus\" = 'O' and \"CANCELED\" = 'N' and \"ObjType\" = 13", sapCompany);
                                         if (!String.IsNullOrEmpty(oDocEntryOINV) && oDocEntryOINV != "0" && !String.IsNullOrEmpty(oDocEntryODPI) && oDocEntryODPI != "0")
@@ -1839,8 +1895,10 @@ namespace Jamiyah_Web_Integration.SAPServices
                                                 student = _invDoc.CardCode,
                                                 level = _invDoc.UserFields.Fields.Item("U_Level").Value?.ToString(),
                                                 program_type = _invDoc.UserFields.Fields.Item("U_ProgramType").Value?.ToString(),
-                                                downPaymentAmount = float.Parse(remainingDPAmount.ToString()),
-                                                downPaymentDocEntry = _dpDoc.DocEntry,
+                                                //downPaymentAmount = float.Parse(remainingDPAmount.ToString()),
+                                                //downPaymentDocEntry = _dpDoc.DocEntry,
+                                                OpenDPs = openDPs,
+                                                isAppliedDP = true,
                                                 oldInvDocEntry = int.Parse(oDocEntryOINV),
                                             };
                                       
@@ -3132,22 +3190,39 @@ namespace Jamiyah_Web_Integration.SAPServices
             return Convert.ToInt16(functionReturnValue);
         }
 
-        public bool CancelInvoiceForDP(int newInvDocEntry, int oldInvDocEntry)
+        public void UpdateCancelledInvoiceForDP(int newInvDocEntry, int oldInvDocEntry)
         {
             sapRecSet.DoQuery($"Update {SBOConstantClass.Database}..OINV SET U_NewDocEntry={newInvDocEntry} WHERE DocEntry={oldInvDocEntry}");
-
-            SAPbobsCOM.Documents _invDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
-            _invDoc.GetByKey(oldInvDocEntry);       
-            var CancelInvoice = _invDoc.CreateCancellationDocument();
-            CancelInvoice.Comments = $"[REVERT] - This invoice has linked with downpayment.";            
-            int ErrCode = CancelInvoice.Add();
-            if (ErrCode == 0)
+        }
+        public bool CancelInvoiceForDP(int newInvDocEntry, int oldInvDocEntry)
+        {
+            try
             {
-                lastMessage = "Successfully updated the invoice with Transaction Id:" + oldInvDocEntry + " in SAP B1.";
-                sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oldInvDocEntry + "',\"objType\" = 14 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + oldInvDocEntry + "'");
-                return true;
+                SBOGetRecord clsSBOGetRecord = new SBOGetRecord();
+                SAPbobsCOM.Documents _invDoc = (Documents)sapCompany.GetBusinessObject(BoObjectTypes.oInvoices);
+                _invDoc.GetByKey(oldInvDocEntry);
+
+                var receiptNo = clsSBOGetRecord.GetSingleValue("select DocEntry from OINV WHERE DocEntry = '" + oldInvDocEntry + "'", sapCompany);
+
+
+
+                var CancelInvoice = _invDoc.CreateCancellationDocument();
+                if (CancelInvoice == null) return true;
+                CancelInvoice.Comments = $"[REVERT] - This invoice has linked with downpayment.";
+                int ErrCode = CancelInvoice.Add();
+                if (ErrCode == 0)
+                {
+                    lastMessage = "Successfully updated the invoice with Transaction Id:" + oldInvDocEntry + " in SAP B1.";
+                    sapRecSet.DoQuery("update " + iif(SBOConstantClass.ServerVersion != "dst_HANADB", "\"TAIDII_SAP\"..\"axxis_tb_IntegrationLog\"", "\"TAIDII_SAP\".\"axxis_tb_IntegrationLog\"") + " set \"status\" = 'true',\"statusCode\" = 'Posted',\"failDesc\" = '',\"successDesc\" = '" + TrimData(lastMessage) + "',\"logDate\" = '" + sapCompany.GetDBServerDate().ToString("yyyy-MM-dd") + "',\"sapCode\" = '" + oldInvDocEntry + "',\"objType\" = 14 where \"companyDB\" = '" + TrimData(SBOConstantClass.Database) + "' and \"module\" = 'Receipt' and \"uniqueId\" = '" + oldInvDocEntry + "'");
+                    return true;
+                }
+                return false;
             }
-            return false;           
+            catch (Exception ex)
+            {
+
+            }
+            return false;
         }
 
         public string ItemMasterData(string oDate = "")

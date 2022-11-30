@@ -16,7 +16,7 @@
         var day = d.getDate();
 
         var currentDate = d.getFullYear() + '-' + (month < 10 ? '0' : '') + month + '-' + '01'; //(day < 10 ? '0' : '') + day + '';
-        currentDate = '2022-07-01'; //For syncing old data
+        currentDate = '2022-05-01'; //For syncing old data
         //currentDate = '2022-06-06'; 
 
         var baseURL = 'https://v2.taidii.com/api/open/sap'; //'https://dev-new.taidii.com/api/open/sap';
@@ -212,7 +212,7 @@
                         $("#result-inv").text(JSON.stringify(request));
                     },
                     complete: function () {
-                        //TAIDII_Sync.ReceiptData();
+                        TAIDII_Sync.ReceiptData();
                     }
                 });
             },
@@ -256,7 +256,7 @@
             //TAIDII_Sync.DpData();
             //TAIDII_Sync.InvoiceData();
             TAIDII_Sync.ReceiptData();
-            //GET_FROM_SAP.ItemMasterData();
+            //GET_FROM_SAP.ItemMasterData(); 
         });
     </script>
 </head>
